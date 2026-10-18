@@ -116,9 +116,9 @@ const linkSizes = {
 } as const;
 
 const linkVariants = {
-  primary: "bg-ink text-white!",
-  accent: "bg-mint text-ink!",
-  secondary: "border border-hairline bg-transparent text-ink!",
+  primary: "bg-ink text-white",
+  accent: "bg-mint text-ink",
+  secondary: "border border-hairline bg-transparent text-ink",
 } as const;
 
 /** Next.js Link styled as a pill button (a <Button> cannot render as a link). */
