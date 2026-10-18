@@ -42,18 +42,20 @@
   --color-error-border: #f3c2be;
 }
 
-body {
-  background: #ffffff;
-  color: var(--color-ink);
-}
+@layer base {
+  body {
+    background: #ffffff;
+    color: var(--color-ink);
+  }
 
-a {
-  color: var(--color-ink);
-}
-a:hover {
-  color: var(--color-ink-2);
-}
+  a {
+    color: var(--color-ink);
+  }
+  a:hover {
+    color: var(--color-ink-2);
+  }
 
-table {
-  border-collapse: collapse;
+  table {
+    border-collapse: collapse;
+  }
 }
