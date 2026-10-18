@@ -43,6 +43,11 @@
 }
 
 @layer base {
+  /* The design inherits the browser default line-height; Tailwind's preflight sets 1.5. */
+  html {
+    line-height: normal;
+  }
+
   body {
     background: #ffffff;
     color: var(--color-ink);

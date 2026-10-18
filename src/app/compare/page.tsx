@@ -38,14 +38,14 @@ const changedRows = [
 
 const chip = "rounded border border-hairline bg-white px-1.5 py-0.5";
 const linkPill =
-  "inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-hairline px-5 py-2.5 text-sm font-medium text-ink no-underline transition-colors hover:bg-surface";
+  "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-hairline px-5 text-sm font-medium text-ink no-underline transition-colors hover:bg-surface";
 
 export default function ComparePage() {
   return (
     <>
       <AppHeader active="Compare" actions={<AccountButton />} />
 
-      <main className="mx-auto flex max-w-[1280px] flex-col gap-8 px-4 py-12 sm:px-8">
+      <main className="mx-auto flex max-w-[1344px] flex-col gap-8 px-4 py-12 sm:px-8">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="flex flex-col gap-3">
             <h1 className="text-4xl font-semibold leading-[1.2] tracking-[-0.5px]">
@@ -80,10 +80,10 @@ export default function ComparePage() {
 
         <section
           aria-label="Summary"
-          className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4"
+          className="grid grid-cols-2 gap-4 lg:grid-cols-4"
         >
           {summary.map((item) => (
-            <Card key={item.label} className="p-6">
+            <Card key={item.label} className="p-4 sm:p-6">
               <Eyebrow>{item.label}</Eyebrow>
               <div className="text-[28px] font-semibold leading-tight">{item.value}</div>
             </Card>
@@ -120,7 +120,7 @@ export default function ComparePage() {
                 ))}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm leading-normal">
+                <table className="w-full whitespace-nowrap text-sm leading-normal">
                   <thead>
                     <tr className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate">
                       <th className="px-5 py-3 text-left font-semibold">email</th>

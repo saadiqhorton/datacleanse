@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DataCleanse
 
-## Getting Started
+DataCleanse is a tool for cleaning CSV files before they are used. Deterministic rules fix the mechanical problems first (date formats, stray whitespace, casing, phone numbers). A person then reviews anything the rules cannot decide, such as likely typos or inconsistent category labels, approves or skips each change, and gets a report of what changed. Optional AI suggestions and "ask your data" questions (answered with a read-only SQL query run on every row) work only when an AI provider is configured; otherwise the app runs in rules-only mode.
 
-First, run the development server:
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Screens
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Route        | Purpose                          |
+| ------------ | -------------------------------- |
+| `/signin`    | Sign in                          |
+| `/files`     | Files in the workspace           |
+| `/upload`    | Add CSV files                    |
+| `/processing`| Rule-based cleaning run          |
+| `/review`    | Approve or skip suggested fixes  |
+| `/report`    | What changed and why             |
+| `/compare`   | Compare original and cleaned data |
+| `/ask`       | Ask questions about your data    |
+| `/rules`     | Cleaning rules                   |
+| `/settings`  | Settings, including AI status    |
+| `/admin`     | Administration                   |
+| `/components`| UI component gallery             |
 
-## Learn More
+## AI models
 
-To learn more about Next.js, take a look at the following resources:
+AI is optional. Configure it with environment variables; see [`.env.example`](.env.example) for every setting.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Cloud (Anthropic):** set `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`, set with `AI_MODEL`. Data is sent to Anthropic.
+- **Local (Ollama):** run `ollama pull llama3.1`, then set `AI_PROVIDER=local` and `AI_BASE_URL=http://localhost:11434/v1`. Data stays on your machine.
+- **Local (LM Studio):** start the local server in LM Studio (default port 1234), then set `AI_PROVIDER=local` and `AI_BASE_URL=http://localhost:1234/v1`. Set `AI_MODEL` to the model id LM Studio shows.
+- **Hosted OpenAI-compatible:** set `AI_PROVIDER=openai`, `AI_BASE_URL`, `AI_API_KEY` and `AI_MODEL`.
+- **Off:** set `AI_PROVIDER=off` for rules-only mode.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The AI never receives whole files. It receives only column names, column types, null and distinct counts, top values, and a 20-row sample.
 
-## Deploy on Vercel
+### API endpoints
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `GET /api/ai/status` returns the configured provider, model, and whether a live check of the provider succeeded.
+- `POST /api/ai/suggest` takes a file profile and returns suggested fixes. Returns `409` when AI is off.
+- `POST /api/ai/ask` takes a question and table profiles and returns a read-only SQL query with an explanation. Returns `409` when AI is off.

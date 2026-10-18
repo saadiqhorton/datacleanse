@@ -47,7 +47,7 @@ const files: {
   changesClass: string;
   deletes: string;
   deletesClass: string;
-  action: Action;
+  actions: Action[];
 }[] = [
   {
     name: "crm_export_q3.csv",
@@ -60,7 +60,7 @@ const files: {
     changesClass: "text-slate",
     deletes: "21 h",
     deletesClass: "text-slate",
-    action: { label: "Review", variant: "primary", href: "/review" },
+    actions: [{ label: "Review", variant: "primary", href: "/review" }],
   },
   {
     name: "vendors_2026.csv",
@@ -73,7 +73,7 @@ const files: {
     changesClass: "text-muted",
     deletes: "23 h",
     deletesClass: "text-slate",
-    action: { label: "View progress", variant: "secondary", href: "/processing" },
+    actions: [{ label: "View progress", variant: "secondary", href: "/processing" }],
   },
   {
     name: "payroll_sept.csv",
@@ -86,7 +86,10 @@ const files: {
     changesClass: "text-slate",
     deletes: "9 h",
     deletesClass: "text-slate",
-    action: { label: "Download", variant: "primary" },
+    actions: [
+      { label: "Report", variant: "secondary", href: "/report" },
+      { label: "Download", variant: "primary" },
+    ],
   },
   {
     name: "leads_export.csv",
@@ -99,7 +102,7 @@ const files: {
     changesClass: "text-error",
     deletes: "2 h",
     deletesClass: "text-slate",
-    action: { label: "Try again", variant: "secondary" },
+    actions: [{ label: "Try again", variant: "secondary" }],
   },
   {
     name: "inventory_aug.csv",
@@ -112,7 +115,7 @@ const files: {
     changesClass: "text-muted",
     deletes: "—",
     deletesClass: "text-muted",
-    action: { label: "Report", variant: "secondary", href: "/report" },
+    actions: [{ label: "Report", variant: "secondary", href: "/report" }],
   },
 ];
 
@@ -133,7 +136,7 @@ export default function FilesPage() {
         }
       />
 
-      <main className="mx-auto flex max-w-[1280px] flex-col gap-8 px-8 py-12">
+      <main className="mx-auto flex max-w-[1344px] flex-col gap-8 px-8 py-12">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="flex flex-col gap-2">
             <h1 className="text-4xl font-semibold leading-[1.2] tracking-[-0.5px]">
@@ -184,7 +187,7 @@ export default function FilesPage() {
           </label>
         </div>
 
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm leading-normal">
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-[0.5px] text-slate">
@@ -200,7 +203,6 @@ export default function FilesPage() {
             </thead>
             <tbody>
               {files.map((f) => {
-                const { action } = f;
                 return (
                   <tr key={f.name} className="border-t border-divider">
                     <td className="px-5 py-4">
@@ -213,18 +215,23 @@ export default function FilesPage() {
                     <td className={cn("px-5 py-4", f.changesClass)}>{f.changes}</td>
                     <td className={cn("px-5 py-4", f.deletesClass)}>{f.deletes}</td>
                     <td className="px-5 py-4 text-right">
-                      {action.href ? (
-                        <Link
-                          href={action.href}
-                          className={linkButton(action.variant, "sm")}
-                        >
-                          {action.label}
-                        </Link>
-                      ) : (
-                        <Button variant={action.variant} size="sm">
-                          {action.label}
-                        </Button>
-                      )}
+                      <div className="inline-flex gap-2">
+                        {f.actions.map((action) =>
+                          action.href ? (
+                            <Link
+                              key={action.label}
+                              href={action.href}
+                              className={linkButton(action.variant, "sm")}
+                            >
+                              {action.label}
+                            </Link>
+                          ) : (
+                            <Button key={action.label} variant={action.variant} size="sm">
+                              {action.label}
+                            </Button>
+                          ),
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -57,7 +57,7 @@ export function CheckboxField({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { children: ReactNode }) {
   return (
     <label className={cn("flex min-h-9 items-center gap-2.5 text-sm", className)}>
-      <input type="checkbox" className="accent-ink" {...props} />
+      <input type="checkbox" {...props} />
       {children}
     </label>
   );
@@ -82,7 +82,7 @@ export function RadioCard({
         className,
       )}
     >
-      <input type="radio" checked={checked} className="mt-[3px] accent-ink" {...props} />
+      <input type="radio" checked={checked} className="mt-[3px]" {...props} />
       <span>
         <span className="font-semibold">{title}</span>
         <br />

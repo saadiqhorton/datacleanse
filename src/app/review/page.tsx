@@ -121,6 +121,14 @@ const linkVariants = {
   secondary: "border border-hairline bg-transparent text-ink",
 } as const;
 
+/* Design uses a white Skip pill and white chips on grey/tinted surfaces; the shared
+   Button and Mono chip set transparent/grey backgrounds, which cn() cannot override. */
+const skipButton =
+  "inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-hairline bg-white px-4 py-2 text-sm font-medium text-ink";
+
+const chipWhite =
+  "font-mono text-[13px] font-medium text-ink-2 rounded border border-hairline bg-white px-1.5 py-0.5";
+
 /** Next.js Link styled as a pill button (a <Button> cannot render as a link). */
 function LinkButton({
   href,
@@ -156,7 +164,7 @@ export default function ReviewChangesPage() {
         }
       />
 
-      <main className="mx-auto flex max-w-[1280px] flex-col gap-8 px-8 py-12">
+      <main className="mx-auto flex max-w-[1344px] flex-col gap-8 px-8 py-12">
         <section className="flex flex-wrap items-end justify-between gap-6">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -235,7 +243,11 @@ export default function ReviewChangesPage() {
                           </td>
                           <td className="px-5 py-4">
                             {row.diff.type === "value" ? (
-                              <ValueChange before={row.diff.before} after={row.diff.after} />
+                              <ValueChange
+                                className="whitespace-nowrap"
+                                before={row.diff.before}
+                                after={row.diff.after}
+                              />
                             ) : (
                               <span className="text-sm">
                                 Merge <Mono>{row.diff.from}</Mono> into{" "}
@@ -244,14 +256,12 @@ export default function ReviewChangesPage() {
                             )}
                           </td>
                           <td className="px-5 py-4 text-slate">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {row.source.kind === "ai" ? (
-                                <SourceTag kind="ai">AI · {row.source.confidence}%</SourceTag>
-                              ) : (
-                                <SourceTag kind="rule" />
-                              )}
-                              <span>{row.reason}</span>
-                            </div>
+                            {row.source.kind === "ai" ? (
+                              <SourceTag kind="ai">AI · {row.source.confidence}%</SourceTag>
+                            ) : (
+                              <SourceTag kind="rule" />
+                            )}{" "}
+                            {row.reason}
                           </td>
                           <td className="px-5 py-4">
                             {row.decision === "approved" ? (
@@ -264,13 +274,13 @@ export default function ReviewChangesPage() {
                                 <Button size="sm" aria-label={`Keep change ${row.location}`}>
                                   Keep
                                 </Button>
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
+                                <button
+                                  type="button"
                                   aria-label={`Skip change ${row.location}`}
+                                  className={skipButton}
                                 >
                                   Skip
-                                </Button>
+                                </button>
                               </div>
                             )}
                           </td>
@@ -295,8 +305,8 @@ export default function ReviewChangesPage() {
               <div className="flex flex-wrap items-center gap-2 text-[13px] text-slate">
                 <PiiTag />
                 <span>Possible in</span>
-                <Mono chip>email</Mono>
-                <Mono chip>phone</Mono>
+                <span className={chipWhite}>email</span>
+                <span className={chipWhite}>phone</span>
               </div>
             </InfoPanel>
 

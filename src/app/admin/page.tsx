@@ -31,7 +31,7 @@ const TABLE_HEADINGS = ["Job", "Type", "Status", "Duration"];
 export default function AdminPage() {
   return (
     <>
-      <div className="flex flex-wrap justify-between gap-2 bg-ink px-8 py-3 text-sm font-medium text-white">
+      <div className="flex flex-wrap justify-between gap-2 bg-ink px-8 py-3 text-sm font-medium leading-[normal] text-white">
         <span>Admin mode · signed in with two-factor</span>
         <span className="text-white/65">Self-hosted · v0.1.0</span>
       </div>
@@ -43,16 +43,16 @@ export default function AdminPage() {
         logoLabel="DataCleanse Admin"
       />
 
-      <main className="mx-auto flex max-w-[1280px] flex-col gap-8 px-8 py-12">
+      <main className="mx-auto flex max-w-[1344px] flex-col gap-8 px-8 py-12">
         <h1 className="text-4xl font-semibold leading-[1.2] tracking-[-0.5px]">Overview</h1>
 
         <section className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
           {STATS.map((stat) => (
-            <Card key={stat.label} className="flex flex-col gap-1 p-6">
-              <Eyebrow>{stat.label}</Eyebrow>
+            <Card key={stat.label} className="flex flex-col p-6">
+              <Eyebrow className="leading-[normal]">{stat.label}</Eyebrow>
               <div
                 className={cn(
-                  "text-[28px] font-semibold leading-tight",
+                  "text-[28px] font-semibold leading-[normal]",
                   stat.tone === "error" && "text-error",
                 )}
               >
@@ -86,7 +86,9 @@ export default function AdminPage() {
                     </td>
                     <td className="px-5 py-3.5">{job.type}</td>
                     <td className="px-5 py-3.5">
-                      <StatusBadge status={job.status}>{job.label}</StatusBadge>
+                      <StatusBadge status={job.status} className="leading-[normal]">
+                        {job.label}
+                      </StatusBadge>
                     </td>
                     <td className="px-5 py-3.5 text-slate">{job.duration}</td>
                   </tr>
@@ -99,7 +101,7 @@ export default function AdminPage() {
             aria-labelledby="audit-log-heading"
             className="flex flex-col gap-3 rounded-xl bg-surface p-6"
           >
-            <h2 id="audit-log-heading" className="text-lg font-semibold">
+            <h2 id="audit-log-heading" className="text-lg font-semibold leading-[normal]">
               Audit log
             </h2>
             <ol className="flex flex-col gap-3 text-sm leading-[1.4]">

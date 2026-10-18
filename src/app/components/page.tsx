@@ -36,13 +36,13 @@ const colors = [
 
 export default function ComponentsPage() {
   return (
-    <main className="mx-auto max-w-[1440px] p-16">
+    <main className="mx-auto max-w-[1440px] px-4 py-12 sm:px-8 lg:p-16">
       <div className="flex flex-col gap-14">
         <header className="flex flex-col gap-2">
-          <h1 className="text-5xl leading-[1.1] font-semibold tracking-[-1px]">
+          <h1 className="text-4xl leading-[1.2] font-semibold tracking-[-0.5px] sm:text-5xl sm:leading-[1.1] sm:tracking-[-1px]">
             DataCleanse components
           </h1>
-          <p className="text-lg text-slate">
+          <p className="text-lg leading-[normal] text-slate">
             Inter for interface text, Geist Mono for data. Pills for every button, 12px
             corners on cards, mint for accents only.
           </p>
@@ -53,7 +53,10 @@ export default function ComponentsPage() {
           <div className="grid grid-cols-2 gap-4 text-[13px] sm:grid-cols-4 lg:grid-cols-8">
             {colors.map((c) => (
               <div key={c.name} className="flex flex-col gap-1.5">
-                <div className={`h-16 rounded-xl ${c.swatch}`} />
+                {/* Design sizes bordered swatches content-box: 64px + 2px border */}
+                <div
+                  className={`${c.swatch.includes("border") ? "h-[66px]" : "h-16"} rounded-xl ${c.swatch}`}
+                />
                 <div>{c.name}</div>
                 <Mono className="text-slate">{c.hex}</Mono>
               </div>
@@ -119,8 +122,8 @@ export default function ComponentsPage() {
             />
             <div className="flex flex-wrap gap-6 text-sm">
               <CheckboxField defaultChecked>Checkbox</CheckboxField>
-              <label className="flex min-h-9 items-center gap-2 text-sm">
-                <input type="radio" name="sample-radio" defaultChecked className="accent-ink" />
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="sample-radio" defaultChecked />
                 Radio
               </label>
             </div>

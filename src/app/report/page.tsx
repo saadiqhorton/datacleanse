@@ -44,10 +44,10 @@ export default function ReportPage() {
     <div className="min-h-dvh bg-white text-ink">
       <AppHeader active="Reports" actions={<AccountButton />} />
 
-      <main className="mx-auto grid max-w-[1280px] items-start gap-8 px-8 py-12 lg:grid-cols-3">
+      <main className="mx-auto grid max-w-[1344px] grid-cols-[minmax(0,1fr)] items-start gap-8 px-8 py-12 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
         <section className="flex min-w-0 flex-col gap-8 lg:col-span-2">
           <div className="flex flex-col gap-3">
-            <StatusBadge status="ready" className="self-start">
+            <StatusBadge status="ready" className="self-start leading-[1.2]">
               Applied
             </StatusBadge>
             <h1 className="text-4xl leading-[1.2] font-semibold tracking-[-0.5px]">
@@ -61,23 +61,23 @@ export default function ReportPage() {
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-4">
             {stats.map((stat) => (
-              <Card key={stat.label} className="p-5">
+              <Card key={stat.label} className="p-5 leading-[1.2]">
                 <Eyebrow>{stat.label}</Eyebrow>
-                <div className="text-[28px] font-semibold">{stat.value}</div>
+                <div className="text-[28px] leading-[1.2] font-semibold">{stat.value}</div>
               </Card>
             ))}
           </div>
 
           <div className="flex flex-col gap-3">
-            <h2 className="text-[22px] font-semibold">By column</h2>
+            <h2 className="text-[22px] leading-[1.2] font-semibold">By column</h2>
             <Card className="overflow-x-auto">
               <table className="w-full text-sm leading-normal">
                 <thead>
                   <tr className="text-left text-[11px] font-semibold tracking-[0.5px] text-slate uppercase">
-                    <th className="px-5 py-3 font-semibold">Column</th>
-                    <th className="px-5 py-3 font-semibold">Issue</th>
-                    <th className="px-5 py-3 font-semibold">Fixed</th>
-                    <th className="px-5 py-3 font-semibold">Method</th>
+                    <th className="px-5 py-3 text-left font-semibold">Column</th>
+                    <th className="px-5 py-3 text-left font-semibold">Issue</th>
+                    <th className="px-5 py-3 text-left font-semibold">Fixed</th>
+                    <th className="px-5 py-3 text-left font-semibold">Method</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -97,9 +97,9 @@ export default function ReportPage() {
           </div>
         </section>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex min-w-0 flex-col gap-4">
           <Card className="flex flex-col gap-3 p-6">
-            <h2 className="text-lg font-semibold">Downloads</h2>
+            <h2 className="text-lg leading-[1.2] font-semibold">Downloads</h2>
             <Button size="lg" className="w-full">
               Cleaned CSV
             </Button>
@@ -115,7 +115,7 @@ export default function ReportPage() {
           </Card>
 
           <InfoPanel className="flex flex-col gap-3 p-6">
-            <h2 className="text-lg font-semibold">Activity</h2>
+            <h2 className="text-lg leading-[1.2] font-semibold">Activity</h2>
             <ol className="flex flex-col gap-3 text-sm leading-[1.4]">
               {activity.map((item) => (
                 <li key={item.time}>

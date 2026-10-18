@@ -35,10 +35,10 @@ export default function AskPage() {
 
       <h1 className="sr-only">Ask your data</h1>
 
-      <div className="mx-auto flex w-full max-w-[1280px] flex-col md:min-h-[calc(100dvh-65px)] md:flex-row">
+      <div className="mx-auto flex w-full max-w-[1344px] flex-col md:min-h-[calc(100dvh-65px)] md:flex-row">
         <aside
           aria-label="Files in this conversation"
-          className="flex flex-col gap-4 border-b border-divider px-4 py-8 md:w-[280px] md:shrink-0 md:border-r md:border-b-0"
+          className="flex flex-col gap-4 border-b border-divider px-4 py-8 md:w-[313px] md:shrink-0 md:border-r md:border-b-0"
         >
           <Eyebrow className="px-2">Files in this chat · {files.length}</Eyebrow>
 
@@ -73,7 +73,7 @@ export default function AskPage() {
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-8">
-          <div className="max-w-[560px] self-end rounded-xl bg-surface px-4 py-3 text-base leading-normal">
+          <div className="max-w-[592px] self-end rounded-xl bg-surface px-4 py-3 text-base leading-normal">
             Which customers had the most refunded revenue in Q3, and what share of their orders
             was refunded?
           </div>
@@ -166,7 +166,7 @@ export default function AskPage() {
 
             <div className="flex flex-wrap gap-2">
               <StatusBadge status="ready">Checked: totals match source files</StatusBadge>
-              <StatusBadge status="review">
+              <StatusBadge status="review" className="whitespace-normal!">
                 1,543 orders had no matching customer and were left out
               </StatusBadge>
             </div>

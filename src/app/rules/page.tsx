@@ -42,13 +42,13 @@ const activeRules = [
 /** On/Off label driven by the checkbox state through `peer-checked`, so the page stays a Server Component. */
 function ToggleLabel({ id, on, column }: { id: string; on: boolean; column: string }) {
   return (
-    <label className="flex min-h-9 items-center gap-1.5 text-[13px]">
+    <label className="flex min-h-9 items-center gap-1.5 text-[13px] md:min-h-0">
       <input
         type="checkbox"
         name={`rule-${id}`}
         defaultChecked={on}
         aria-label={`Enable ${column} rule`}
-        className="peer accent-ink"
+        className="peer"
       />
       <span className="inline peer-checked:hidden">Off</span>
       <span className="hidden peer-checked:inline">On</span>
@@ -61,21 +61,24 @@ export default function RulesPage() {
     <>
       <AppHeader active="Rules" actions={<AccountButton />} />
 
-      <div className="mx-auto flex max-w-[1280px] flex-wrap">
-        <SideNav
-          label="Rule sets"
-          bordered
-          dot
-          active="CRM exports"
-          items={ruleSets}
-          footer={
-            <Button variant="ghost" className="mt-3 justify-start">
-              + New rule set
-            </Button>
-          }
-        />
+      <div className="mx-auto flex max-w-[1344px] flex-wrap">
+        {/* Design is content-box: 240px content + 32px nav padding + 1px border = 273px. Full width when stacked on phones. */}
+        <div className="w-full md:w-[273px] md:shrink-0 [&>nav]:border-r-0 [&>nav]:px-0 md:[&>nav]:border-r md:[&>nav]:px-4">
+          <SideNav
+            label="Rule sets"
+            bordered
+            dot
+            active="CRM exports"
+            items={ruleSets}
+            footer={
+              <Button variant="ghost" size="sm" className="mt-3 justify-start">
+                + New rule set
+              </Button>
+            }
+          />
+        </div>
 
-        <main className="flex min-w-0 flex-1 basis-[320px] flex-col gap-6 p-8">
+        <main className="flex min-w-0 flex-1 basis-[320px] flex-col gap-6 p-4 md:p-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="flex flex-col gap-2">
               <h1 className="text-[28px] font-semibold leading-[1.25]">CRM exports</h1>
@@ -99,12 +102,13 @@ export default function RulesPage() {
                 defaultValue="Country should always be the full English name"
                 className="h-11 min-w-0 flex-1 basis-60 rounded-lg border-2 border-mint px-4 text-sm outline-none"
               />
-              <Button variant="primary" size="lg">
+              <Button variant="primary" size="lg" className="w-full md:w-auto">
                 Turn into rule
               </Button>
             </div>
 
             <CodeBlock
+              className="[&_pre]:whitespace-pre-wrap"
               caption={
                 <span className="flex flex-wrap justify-between gap-x-4 gap-y-1">
                   <span>Draft rule · check before saving</span>
@@ -139,7 +143,7 @@ export default function RulesPage() {
                 }
               >
                 <Mono chip>{rule.column}</Mono>
-                <span className="min-w-[200px] flex-1 text-sm">{rule.text}</span>
+                <span className="min-w-0 flex-1 text-sm">{rule.text}</span>
                 <ToggleLabel id={rule.id} on={rule.on} column={rule.column} />
               </div>
             ))}

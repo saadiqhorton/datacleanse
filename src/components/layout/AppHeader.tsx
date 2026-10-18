@@ -42,27 +42,29 @@ export function AppHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-divider bg-white px-8 py-3">
-      <div className="flex flex-wrap items-center gap-8">
-        <Logo label={logoLabel} />
-        {nav && (
-          <nav aria-label={navLabel} className="flex flex-wrap gap-6 text-sm">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={item.label === active ? "page" : undefined}
-                className={cn(
-                  "no-underline",
-                  item.label === active ? "font-medium text-ink" : "text-slate",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        )}
-      </div>
+    <header className="flex min-h-16 flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-divider bg-white px-4 py-3 sm:px-8">
+      <Logo label={logoLabel} />
+      {nav && (
+        // On phones the nav takes its own full-width row and scrolls sideways.
+        <nav
+          aria-label={navLabel}
+          className="order-last -mx-4 flex basis-full gap-6 overflow-x-auto px-4 text-sm whitespace-nowrap sm:order-none sm:mx-0 sm:basis-auto sm:flex-1 sm:overflow-visible sm:px-0"
+        >
+          {nav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.label === active ? "page" : undefined}
+              className={cn(
+                "no-underline",
+                item.label === active ? "font-medium text-ink" : "text-slate",
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      )}
       {center}
       {actions && <div className="flex items-center gap-3">{actions}</div>}
     </header>

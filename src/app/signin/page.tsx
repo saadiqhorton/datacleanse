@@ -33,6 +33,7 @@ export default function SignInPage() {
               type="email"
               name="email"
               autoComplete="email"
+              autoFocus
               defaultValue="maria@northwind.co"
             />
 
@@ -40,7 +41,7 @@ export default function SignInPage() {
               label={
                 <span className="flex items-center justify-between gap-4">
                   Password
-                  <a href="#" className="text-[13px] font-medium">
+                  <a href="#" className="text-[13px] font-medium whitespace-nowrap underline">
                     Forgot password?
                   </a>
                 </span>
@@ -71,7 +72,7 @@ export default function SignInPage() {
 
           <p className="text-sm text-slate">
             New to DataCleanse?{" "}
-            <a href="#" className="font-medium">
+            <a href="#" className="font-medium underline">
               Create an account
             </a>
           </p>

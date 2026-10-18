@@ -60,5 +60,5 @@ export function isLocal(config: AIConfig) {
   if (config.provider === "local") return true;
   if (!config.baseURL) return false;
   const host = new URL(config.baseURL).hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }

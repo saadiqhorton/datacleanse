@@ -41,8 +41,8 @@ export default function ProcessingPage() {
         }
       />
 
-      <main className="mx-auto grid max-w-[1280px] grid-cols-1 items-start gap-8 px-4 py-12 sm:px-8 lg:grid-cols-2 lg:py-16">
-        <Card className="flex flex-col gap-6 p-6 sm:p-8">
+      <main className="mx-auto grid max-w-[1344px] grid-cols-1 items-start gap-8 px-4 py-12 sm:px-8 lg:grid-cols-2 lg:py-16">
+        <Card className="flex min-w-0 flex-col gap-6 p-6 sm:p-8">
           <div className="flex flex-col gap-2">
             <Mono className="text-slate">crm_export_q3.csv</Mono>
             <h1 className="text-[28px] font-semibold leading-[1.25]">
@@ -110,19 +110,19 @@ export default function ProcessingPage() {
             <span className="text-sm text-slate">
               You can leave this page. We&apos;ll email you when it&apos;s ready.
             </span>
-            <Link href="/files" className={cn(pillBase, pillSecondary)}>
+            <Link href="/files" className={cn(pillBase, "border border-hairline text-ink")}>
               Cancel job
             </Link>
           </div>
         </Card>
 
-        <section className="flex flex-col gap-4">
+        <section className="flex min-w-0 flex-col gap-4">
           <Eyebrow>Other states</Eyebrow>
 
           <Callout
             tone="error"
             title={
-              <span className="flex items-center gap-2.5 text-base">
+              <span className="flex items-center gap-2.5 text-base leading-[normal]">
                 <svg
                   width="18"
                   height="18"
@@ -156,7 +156,11 @@ export default function ProcessingPage() {
 
           <Callout
             tone="review"
-            title={<span className="text-base">AI is temporarily unavailable</span>}
+            title={
+              <span className="text-base leading-[normal]">
+                AI is temporarily unavailable
+              </span>
+            }
           >
             <div className="mt-3 flex flex-col gap-3">
               <p className="m-0 text-sm leading-normal text-slate">
@@ -177,7 +181,11 @@ export default function ProcessingPage() {
           <Callout
             tone="info"
             className="border border-hairline"
-            title={<span className="text-base">Large file · processing in chunks</span>}
+            title={
+              <span className="text-base leading-[normal]">
+                Large file · processing in chunks
+              </span>
+            }
           >
             <p className="mb-0 mt-2 text-sm leading-normal text-slate">
               2.4 million rows. We stream this file in parts so memory stays
