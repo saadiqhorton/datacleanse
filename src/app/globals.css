@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), "SF Mono", Menlo, monospace;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Neutrals */
+  --color-ink: #0b0c0e;
+  --color-ink-2: #2a2d33;
+  --color-slate: #5b616b;
+  --color-muted: #6b7280;
+  --color-hairline: #e3e5e8;
+  --color-divider: #eeeff1;
+  --color-surface: #f6f7f8;
+  --color-neutral-soft: #f0f1f3;
+  --color-dashed: #d3d6db;
+  --color-code: #0f1115;
+  --color-code-keyword: #8fb4f0;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Accent (mint) — accents only */
+  --color-mint: #00d4a4;
+  --color-mint-deep: #00a47f;
+  --color-mint-soft: #e3faf3;
+  --color-mint-ink: #00674f;
+
+  /* Rule-based changes */
+  --color-rule: #2a5db0;
+  --color-rule-soft: rgb(55 114 207 / 0.15);
+
+  /* Needs review / AI suggestions */
+  --color-review: #8a3a10;
+  --color-review-soft: #fde6d6;
+  --color-review-bg: #fff4ec;
+  --color-review-border: #f6cbaf;
+  --color-review-row: #fff9f5;
+
+  /* Errors */
+  --color-error: #b42318;
+  --color-error-ink: #8f1d14;
+  --color-error-soft: #fde8e7;
+  --color-error-bg: #fef6f5;
+  --color-error-border: #f3c2be;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: var(--color-ink);
+}
+
+a {
+  color: var(--color-ink);
+}
+a:hover {
+  color: var(--color-ink-2);
+}
+
+table {
+  border-collapse: collapse;
 }
