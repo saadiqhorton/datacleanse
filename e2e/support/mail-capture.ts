@@ -98,3 +98,20 @@ export function decodeQuotedPrintable(text: string): string {
     .replace(/=\r?\n/g, "")
     .replace(/=([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
 }
+
+/**
+ * The readable body of a captured message: headers are dropped and the body is decoded from base64 or
+ * quoted-printable, whichever the sender used. Plain bodies come back unchanged.
+ */
+export function messageBody(raw: string): string {
+  const split = raw.indexOf("\n\n");
+  const headers = split === -1 ? "" : raw.slice(0, split);
+  const body = split === -1 ? raw : raw.slice(split + 2);
+  if (/^content-transfer-encoding:\s*base64/im.test(headers)) {
+    return Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8");
+  }
+  if (/^content-transfer-encoding:\s*quoted-printable/im.test(headers)) {
+    return decodeQuotedPrintable(body);
+  }
+  return body;
+}

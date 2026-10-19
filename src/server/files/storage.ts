@@ -3,8 +3,11 @@ import path from "node:path";
 import { env } from "../env";
 import { FileError, NOT_FOUND_MESSAGE } from "./errors";
 
-/** Ids from ids.ts: a prefix, an underscore, then lowercase letters, digits and "x". */
-export const ID_PATTERN = /^[a-z]+_[a-z0-9x]+$/;
+/**
+ * App ids from ids.ts ("file_3k9x…") and Better Auth user ids (mixed-case alphanumeric). Letters, digits,
+ * "_" and "-" only: no "." or "/", so an id can never escape its directory.
+ */
+export const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const MAX_ID_LENGTH = 64;
 
 const FILES_ROOT = "files";

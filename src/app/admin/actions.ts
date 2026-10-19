@@ -14,6 +14,8 @@ export type ActionState = { error?: string; message?: string } | null;
 export type ConnectionTestState = { ok: boolean; message: string } | null;
 
 const ID_PATTERN = /^[a-z0-9_]{1,64}$/;
+/** Better Auth user ids are random mixed-case alphanumerics. */
+const USER_ID_PATTERN = /^[A-Za-z0-9_]{1,64}$/;
 
 function text(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -44,7 +46,7 @@ const MANAGE_MESSAGES: Record<(typeof MANAGE_OPS)[number], string> = {
 
 export async function manageUserAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { user } = await requireAdmin();
-  const userId = z.string().regex(ID_PATTERN).safeParse(text(formData, "userId"));
+  const userId = z.string().regex(USER_ID_PATTERN).safeParse(text(formData, "userId"));
   const op = z.enum(MANAGE_OPS).safeParse(text(formData, "op"));
   if (!userId.success || !op.success) return { error: "That request is not valid." };
 
