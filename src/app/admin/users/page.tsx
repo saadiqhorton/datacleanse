@@ -42,7 +42,7 @@ async function UsersList({ searchParams }: { searchParams: SearchParams }) {
 
   return (
     <>
-      <p className="-mt-4 text-sm text-slate">
+      <p className="text-sm text-slate">
         {signupsOpen()
           ? "Sign-ups are open."
           : "Single-user instance. Sign-ups are closed after the first account; set ALLOW_SIGNUPS=1 to let others create accounts."}

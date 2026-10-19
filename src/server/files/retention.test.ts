@@ -11,6 +11,7 @@ import { sweepExpiredFiles } from "./retention";
 import { absoluteDataPath, fileDirRel } from "./storage";
 import { changeCount, crmCsv, fileRow, uploadAndClean } from "./test-support";
 import { createUpload } from "./upload";
+import { authReady } from "../auth/better-auth";
 
 let conn: DB;
 let counter = 0;
@@ -81,27 +82,27 @@ describe("retention sweep", () => {
     cancelJob(jobId);
   });
 
-  it("removes expired sessions and used or expired login tokens", async () => {
+  it("removes expired Better Auth sessions and verification tokens", async () => {
+    await authReady();
     const userId = newUser();
     const now = Date.now();
-    db()
-      .prepare(
-        `INSERT INTO sessions (id, user_id, created_at, last_seen_at, expires_at) VALUES ('sess_old', ?, ?, ?, ?),
-         ('sess_new', ?, ?, ?, ?)`,
-      )
-      .run(userId, now, now, now - 1, userId, now, now, now + 10 * 86400000);
-    db()
-      .prepare(
-        `INSERT INTO login_tokens (id, email, purpose, expires_at, used_at) VALUES
-         ('tok_expired', 'a@b.co', 'magic_link', ?, NULL), ('tok_used', 'a@b.co', 'magic_link', ?, ?),
-         ('tok_live', 'a@b.co', 'magic_link', ?, NULL)`,
-      )
-      .run(now - 1, now + 60000, now, now + 60000);
+    const iso = (t: number) => new Date(t).toISOString();
+    db().prepare("INSERT INTO auth_user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, 'T', 't@x.co', 0, ?, ?)").run(userId, iso(now), iso(now));
+    const insertSession = db().prepare(
+      "INSERT INTO auth_session (id, expiresAt, token, createdAt, updatedAt, userId) VALUES (?, ?, ?, ?, ?, ?)",
+    );
+    insertSession.run("s_old", iso(now - 1000), "tok-old", iso(now), iso(now), userId);
+    insertSession.run("s_new", iso(now + 86400000), "tok-new", iso(now), iso(now), userId);
+    const insertVerification = db().prepare(
+      "INSERT INTO auth_verification (id, identifier, value, expiresAt, createdAt, updatedAt) VALUES (?, 'reset', 'v', ?, ?, ?)",
+    );
+    insertVerification.run("v_old", iso(now - 1000), iso(now), iso(now));
+    insertVerification.run("v_new", iso(now + 60000), iso(now), iso(now));
     const result = await sweepExpiredFiles(now);
     assert.equal(result.deletedSessions, 1);
-    assert.equal(result.deletedTokens, 2);
-    const ids = (db().prepare("SELECT id FROM login_tokens").all() as { id: string }[]).map((r) => r.id);
-    assert.deepEqual(ids, ["tok_live"]);
+    assert.equal(result.deletedTokens, 1);
+    const sessions = (db().prepare("SELECT id FROM auth_session").all() as { id: string }[]).map((r) => r.id);
+    assert.deepEqual(sessions, ["s_new"]);
   });
 
   it("fails a file left in processing after its job was cancelled", async () => {

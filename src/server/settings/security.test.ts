@@ -21,7 +21,6 @@ const IPHONE_SAFARI =
 
 let conn: DB;
 let maria: string;
-let sam: string;
 
 async function signUp(name: string, email: string): Promise<string> {
   const res = await getAuth().api.signUpEmail({ body: { name, email, password: PASSWORD } });
@@ -50,7 +49,9 @@ beforeEach(async () => {
   conn = setupTestEnv().db;
   await authReady();
   maria = await signUp("Maria Rossi", "maria@northwind.co");
-  sam = await signUp("Sam Park", "sam@northwind.co");
+  await signUp("Sam Park", "sam@northwind.co");
+  // Sign-up also starts a session; start each test with none.
+  conn.prepare("DELETE FROM auth_session").run();
 });
 
 describe("session list", () => {
@@ -78,12 +79,14 @@ describe("session list", () => {
     assert.equal(json.includes("token"), false);
   });
 
-  it("explains when Better Auth will not list sessions older than its fresh window", async () => {
+  it("lists sessions however long ago they were created, but not expired ones", async () => {
     const here = await signIn("maria@northwind.co");
+    const old = await signIn("maria@northwind.co");
     conn.prepare("UPDATE auth_session SET createdAt = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(here.sessionId);
-    await assert.rejects(listSessionViews(maria, here.headers, here.sessionId), {
-      message: "Sign in again to see your signed-in devices.",
-    });
+    conn.prepare("UPDATE auth_session SET expiresAt = '2020-01-02T00:00:00.000Z' WHERE id = ?").run(old.sessionId);
+    const ids = (await listSessionViews(maria, here.headers, here.sessionId)).map((s) => s.id);
+    assert.ok(ids.includes(here.sessionId));
+    assert.equal(ids.includes(old.sessionId), false);
   });
 });
 

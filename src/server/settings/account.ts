@@ -6,7 +6,8 @@ import { env } from "../env";
 import { getUserById, normalizeEmail } from "../auth/users";
 import { SettingsError } from "./errors";
 
-const USER_ID_RE = /^usr_[a-z0-9]{1,40}$/;
+/** Better Auth ids are random alphanumerics; older accounts use usr_ ids. Neither can contain a path separator or dot. */
+const USER_ID_RE = /^[A-Za-z0-9_]{1,64}$/;
 
 /** DATA_DIR/files/<userId>. The id is validated first, so no user input reaches the path. */
 export function userFilesDir(userId: string): string {

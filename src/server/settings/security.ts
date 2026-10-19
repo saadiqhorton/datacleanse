@@ -52,28 +52,22 @@ export function getPasswordInfo(userId: string): { changedAt: number } | null {
 }
 
 /**
- * The user's live sessions, newest activity first, with the caller's marked as current. Built from
- * auth.api.listSessions, which returns tokens: only the id, device label and times are kept here.
- * Better Auth only lists sessions created within its freshAge window; older ones raise SettingsError.
+ * The user's live sessions, newest activity first, with the caller's marked as current. Read straight from
+ * Better Auth's session table (the user's own rows), so tokens never leave the server and the list works
+ * however long ago the user signed in.
  */
 export async function listSessionViews(
   userId: string,
-  headers: Headers,
+  _headers: Headers,
   currentSessionId: string | null,
   now = Date.now(),
 ): Promise<SessionView[]> {
   await authReady();
-  let sessions;
-  try {
-    sessions = await getAuth().api.listSessions({ headers });
-  } catch (err) {
-    if (apiErrorCode(err) === "SESSION_NOT_FRESH") {
-      throw new SettingsError("Sign in again to see your signed-in devices.");
-    }
-    throw err;
-  }
-  return sessions
-    .filter((s) => s.userId === userId)
+  const rows = db()
+    .prepare("SELECT id, userAgent, updatedAt, expiresAt FROM auth_session WHERE userId = ?")
+    .all(userId) as { id: string; userAgent: string | null; updatedAt: string | number; expiresAt: string | number }[];
+  return rows
+    .filter((s) => new Date(s.expiresAt).getTime() > now)
     .map((s) => {
       const lastActiveAt = new Date(s.updatedAt).getTime();
       return {
