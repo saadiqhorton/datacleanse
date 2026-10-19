@@ -56,12 +56,7 @@ export function setDecision(
         ignored++;
         continue;
       }
-      const allowed =
-        decision === "skipped" || row.source === "ai" || (row.source === "rule" && row.decision === "pending");
-      if (!allowed) {
-        ignored++;
-        continue;
-      }
+      // Any rule or AI change may be skipped or (re)approved; skipping a rule change can be undone.
       update.run(decision, userId, now, id, file.id);
       updated++;
     }

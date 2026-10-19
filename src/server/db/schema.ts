@@ -206,4 +206,7 @@ CREATE TABLE ai_calls (
 );
 CREATE INDEX ai_calls_at ON ai_calls(at);
 `,
+  /* 2: TOTP replay protection: the last accepted 30-second time step per user */ `
+ALTER TABLE users ADD COLUMN totp_last_step INTEGER;
+`,
 ];

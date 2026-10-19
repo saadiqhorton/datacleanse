@@ -24,7 +24,7 @@ export function getJobForUser(userId: string, jobId: string): JobView | null {
   const row = db()
     .prepare(
       `SELECT j.id, j.type, j.status, j.step, j.progress, j.error, j.meta_json, j.file_id,
-              f.status AS file_status, f.ai_status AS ai_status
+              f.status AS file_status, f.ai_status AS ai_status, f.error AS file_error
        FROM jobs j LEFT JOIN files f ON f.id = j.file_id AND f.user_id = j.user_id
        WHERE j.id = ? AND j.user_id = ?`,
     )
@@ -40,6 +40,7 @@ export function getJobForUser(userId: string, jobId: string): JobView | null {
         file_id: string | null;
         file_status: string | null;
         ai_status: string | null;
+        file_error: string | null;
       }
     | undefined;
   if (!row) return null;
@@ -55,7 +56,8 @@ export function getJobForUser(userId: string, jobId: string): JobView | null {
     status: row.status,
     step: row.step,
     progress: row.progress,
-    error: row.error,
+    // The file's error is the user-facing message; the job's may be raw exception text.
+    error: row.file_error ?? row.error,
     fileId: row.file_id,
     fileStatus: row.file_status,
     aiStatus: row.ai_status,

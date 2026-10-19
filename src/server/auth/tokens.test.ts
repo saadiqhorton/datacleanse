@@ -5,7 +5,7 @@ import { db } from "../db";
 import { getSentEmailsForTests } from "../email";
 import { authenticate, createUser, findUserByEmail } from "./users";
 import { createSessionRecord, lookupSession } from "./sessions";
-import { consumeMagicLink, requestMagicLink, requestPasswordReset, resetPassword } from "./tokens";
+import { consumeMagicLink, peekMagicLink, requestMagicLink, requestPasswordReset, resetPassword } from "./tokens";
 
 /** Pulls the single-use token out of the most recent email. */
 function tokenFromLastEmail(): string {
@@ -133,5 +133,61 @@ test("a magic link cannot be used as a reset token", async () => {
   await requestMagicLink("x@example.com");
   const token = tokenFromLastEmail();
   assert.equal(await resetPassword(token, "new-password-1"), null);
+  mock.restoreAll();
+});
+
+test("peekMagicLink checks the link without consuming it", async () => {
+  silenceEmailLog();
+  const { db: conn } = setupTestEnv();
+  const uid = insertTestUser(conn, "user_p", "p@example.com");
+  await requestMagicLink("p@example.com");
+  const token = tokenFromLastEmail();
+
+  // A link scanner opening the URL any number of times must not burn the link.
+  assert.equal(peekMagicLink(token), "p@example.com");
+  assert.equal(peekMagicLink(token), "p@example.com", "peek is repeatable");
+  assert.equal((await consumeMagicLink(token))?.id, uid, "still usable after peeks");
+  assert.equal(peekMagicLink(token), null, "peek after use");
+  assert.equal(await consumeMagicLink(token), null, "single use");
+  mock.restoreAll();
+});
+
+test("peekMagicLink returns the email for a new address without creating the account", async () => {
+  silenceEmailLog();
+  setupTestEnv();
+  await requestMagicLink("fresh@example.com");
+  const token = tokenFromLastEmail();
+  assert.equal(peekMagicLink(token), "fresh@example.com");
+  assert.equal(findUserByEmail("fresh@example.com"), null, "peek creates nothing");
+  mock.restoreAll();
+});
+
+test("peekMagicLink rejects expired, garbage, empty, and reset tokens", async () => {
+  silenceEmailLog();
+  const { db: conn } = setupTestEnv();
+  insertTestUser(conn, "user_pe", "pe@example.com");
+  await requestMagicLink("pe@example.com");
+  const token = tokenFromLastEmail();
+  assert.equal(peekMagicLink(""), null);
+  assert.equal(peekMagicLink("definitely-not-issued"), null);
+
+  await requestPasswordReset("pe@example.com");
+  await new Promise((r) => setImmediate(r));
+  const resetToken = tokenFromLastEmail();
+  assert.equal(peekMagicLink(resetToken), null, "a reset token is not a sign-in link");
+
+  conn.prepare("UPDATE login_tokens SET expires_at = ? WHERE purpose = 'magic_link'").run(Date.now() - 1);
+  assert.equal(peekMagicLink(token), null, "expired");
+  mock.restoreAll();
+});
+
+test("peekMagicLink rejects a disabled account", async () => {
+  silenceEmailLog();
+  const { db: conn } = setupTestEnv();
+  const uid = insertTestUser(conn, "user_pd", "pd@example.com");
+  await requestMagicLink("pd@example.com");
+  const token = tokenFromLastEmail();
+  conn.prepare("UPDATE users SET disabled = 1 WHERE id = ?").run(uid);
+  assert.equal(peekMagicLink(token), null);
   mock.restoreAll();
 });

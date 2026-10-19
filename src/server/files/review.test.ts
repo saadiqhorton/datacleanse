@@ -65,7 +65,8 @@ describe("review decisions", () => {
 
     // An approved rule change can be skipped, but not approved again (it is not pending).
     assert.deepEqual(setDecision(userId, fileId, [approvedRule.id], "skipped"), { updated: 1, ignored: 0 });
-    assert.deepEqual(setDecision(userId, fileId, [approvedRule.id], "approved"), { updated: 0, ignored: 1 });
+    // A skipped rule change can be restored.
+    assert.deepEqual(setDecision(userId, fileId, [approvedRule.id], "approved"), { updated: 1, ignored: 0 });
 
     // Flags never toggle.
     assert.deepEqual(setDecision(userId, fileId, [flag], "skipped"), { updated: 0, ignored: 1 });

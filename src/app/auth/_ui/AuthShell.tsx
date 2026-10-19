@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { Logo } from "@/components/layout";
+// Import Logo directly: the layout barrel also exports server-only components (AccountButton reads the session),
+// and client forms import helpers from this file.
+import { Logo } from "@/components/layout/Logo";
 import { CheckIcon } from "@/components/ui";
 
 const highlights = [

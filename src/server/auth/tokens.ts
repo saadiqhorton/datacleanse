@@ -73,6 +73,26 @@ export async function requestMagicLink(rawEmail: string): Promise<void> {
 }
 
 /**
+ * Checks a magic-link token without consuming it, so email link scanners and prefetchers that
+ * follow the URL cannot burn it. Returns the email the link would sign in, or null when
+ * consuming it would fail (unknown, expired, used, wrong purpose, or a disabled account).
+ */
+export function peekMagicLink(token: string): string | null {
+  if (!token) return null;
+  const now = Date.now();
+  const row = db()
+    .prepare(
+      `SELECT email FROM login_tokens
+       WHERE id = ? AND purpose = 'magic_link' AND used_at IS NULL AND expires_at > ?`,
+    )
+    .get(sha256(token), now) as { email: string } | undefined;
+  if (!row) return null;
+  const user = findUserByEmail(row.email);
+  if (user?.disabled) return null;
+  return row.email;
+}
+
+/**
  * Consumes a magic-link token and returns the signed-in user, creating the account on first use.
  * Returns null for invalid or expired tokens and for disabled accounts.
  */
