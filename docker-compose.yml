@@ -1,0 +1,25 @@
+# Single-user DataCleanse. Start with:  docker compose up -d   →  http://localhost:3000
+# The first account you create is the owner; sign-ups close after that.
+services:
+  datacleanse:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - datacleanse-data:/data          # database, uploads and the generated app secret
+    # Lets the container reach a model server running on your machine (Ollama, LM Studio, ...).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_URL: http://localhost:3000    # change to your public URL if you put it behind a domain
+      # --- AI (optional; leave unset for rules-only cleaning, or configure later in Admin › Configuration) ---
+      # A model server you already run on this machine (Ollama shown; LM Studio uses port 1234):
+      # AI_PROVIDER: local
+      # AI_BASE_URL: http://host.docker.internal:11434/v1
+      # AI_MODEL: llama3.1
+      # Or a cloud API:
+      # ANTHROPIC_API_KEY: sk-ant-...
+    restart: unless-stopped
+
+volumes:
+  datacleanse-data:

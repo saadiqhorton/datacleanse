@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { audit } from "../audit";
-import { authenticate, AuthError, createUser, normalizeEmail, type UserRecord } from "./users";
+import { authenticate, AuthError, createUser, normalizeEmail, signupsOpen, type UserRecord } from "./users";
 import { passwordProblem } from "./passwords";
 import { safeNext } from "./redirects";
 import { emailRequestLimiter, signInLimiter, twoFactorLimiter } from "./rateLimit";
@@ -92,6 +92,9 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   const rawEmail = field(formData, "email");
   const password = field(formData, "password");
 
+  if (!signupsOpen()) {
+    return { error: "Sign-ups are closed on this DataCleanse. Ask the owner to invite you.", email: rawEmail, name };
+  }
   if (!name) return { error: "Enter your name.", email: rawEmail, name };
   const email = normalizeEmail(rawEmail);
   if (!email) return { error: EMAIL_ERROR, email: rawEmail, name };

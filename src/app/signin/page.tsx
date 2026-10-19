@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { connection } from "next/server";
+import { redirect } from "next/navigation";
+import { hasAnyUser, signupsOpen } from "@/server/auth/users";
 import { safeNext } from "@/server/auth/redirects";
 import { AuthShell } from "../auth/_ui/AuthShell";
 import { SignInForm } from "./SignInForm";
@@ -29,12 +32,9 @@ export default function SignInPage({ searchParams }: { searchParams: Promise<Par
       title="Sign in"
       subtitle="Pick up where you left off with your files."
       footer={
-        <p className="text-sm text-slate">
-          New to DataCleanse?{" "}
-          <Link href="/signup" className="font-medium underline">
-            Create an account
-          </Link>
-        </p>
+        <Suspense fallback={null}>
+          <SignUpHint />
+        </Suspense>
       }
     >
       {/* Reads searchParams, so it sits behind a boundary (cacheComponents). */}
@@ -56,4 +56,22 @@ async function SignInFormFromParams({ searchParams }: { searchParams: Promise<Pa
       ? { tone: "info" as const, text: "Your password has been updated. Sign in with your new password." }
       : null);
   return <SignInForm next={next} notice={notice} />;
+}
+
+/**
+ * A fresh install has no accounts yet, so send the first visitor to create the owner account.
+ * After that, sign-up is closed unless ALLOW_SIGNUPS=1, and the link is hidden.
+ */
+async function SignUpHint() {
+  await connection();
+  if (!hasAnyUser()) redirect("/signup");
+  if (!signupsOpen()) return null;
+  return (
+    <p className="text-sm text-slate">
+      New to DataCleanse?{" "}
+      <Link href="/signup" className="font-medium underline">
+        Create an account
+      </Link>
+    </p>
+  );
 }

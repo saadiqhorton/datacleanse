@@ -70,6 +70,8 @@ export function isLocal(config: AIConfig) {
     /^10\./.test(host) ||
     /^192\.168\./.test(host) ||
     /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    host === "host.docker.internal"
+    host === "host.docker.internal" ||
+    // Single-label names (e.g. the "ollama" service in docker-compose) only resolve on a local network.
+    (!host.includes(".") && !host.includes(":"))
   );
 }

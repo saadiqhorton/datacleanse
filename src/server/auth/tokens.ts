@@ -3,7 +3,7 @@ import { db } from "../db";
 import { sendEmail } from "../email";
 import { env } from "../env";
 import { newToken, sha256 } from "../ids";
-import { AuthError, createUser, findUserByEmail, normalizeEmail, writePassword, type UserRecord } from "./users";
+import { AuthError, createUser, findUserByEmail, normalizeEmail, signupsOpen, writePassword, type UserRecord } from "./users";
 import { passwordProblem } from "./passwords";
 import { revokeAllSessions } from "./sessions";
 
@@ -56,6 +56,10 @@ function resetUrl(token: string): string {
 export async function requestMagicLink(rawEmail: string): Promise<void> {
   const email = normalizeEmail(rawEmail);
   if (!email) return;
+  // With sign-ups closed, only existing accounts get a link (same response either way: no enumeration).
+  const existing = findUserByEmail(email);
+  if (!existing && !signupsOpen()) return;
+  if (existing?.disabled) return;
   const token = storeToken(email, "magic_link");
   audit("auth.magic_link_requested", `Sign-in link requested for ${email}.`);
   await sendEmail({
@@ -101,6 +105,7 @@ export async function consumeMagicLink(token: string): Promise<UserRecord | null
   if (!email) return null;
   let user = findUserByEmail(email);
   if (!user) {
+    if (!signupsOpen()) return null;
     try {
       user = await createUser({ email, name: email.split("@")[0] });
     } catch (err) {

@@ -41,17 +41,31 @@ Expired files are deleted from disk by the retention sweep, which runs at startu
 
 ## Quick start
 
-Requires Node.js 22.
+DataCleanse is a single-user, self-hosted app. The first account you create is the owner; after that,
+sign-ups close (set `ALLOW_SIGNUPS=1` to reopen them). Sign-in is email + password via
+[Better Auth](https://better-auth.com/docs/authentication/email-password).
+
+**With Docker**
+
+```bash
+docker compose up -d
+```
+
+Open [http://localhost:3000](http://localhost:3000) and create your account. Data lives in the
+`datacleanse-data` volume.
+
+**With Node.js 22**
 
 ```bash
 npm install
-cp .env.example .env.local   # optional; see the AI section below
-npm run dev
+cp .env.example .env.local   # optional
+npm run build && npm start    # or `npm run dev` while developing
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign up. The first account becomes the admin. In development, sign-in links are printed to the server log, so you do not need email set up.
-
-Without an AI model, set `AI_PROVIDER=off` in `.env.local`. Otherwise the app tries a local model at `http://localhost:11434/v1` and marks the AI step unavailable when none is running.
+AI is off until you configure it. DataCleanse doesn't run models itself: point it at a model server
+you already run (Ollama, LM Studio, llama.cpp, vLLM) or a cloud API, in `.env.local` / `docker-compose.yml`
+or later in **Admin > Configuration**. Inside Docker, reach a model server on your machine at
+`http://host.docker.internal:<port>/v1` (for Ollama: `http://host.docker.internal:11434/v1`), not `localhost`.
 
 **Where data lives.** `DATA_DIR` defaults to `./.data`, relative to the folder you start the server from:
 
@@ -66,7 +80,7 @@ AI is optional. The instance provider comes from environment variables. An admin
 
 | Option | Set | Where data goes |
 | --- | --- | --- |
-| Local, Ollama | `AI_PROVIDER=local`, `AI_BASE_URL=http://localhost:11434/v1` (default), `AI_MODEL=llama3.1` (default). Run `ollama pull llama3.1` first. | Your machine |
+| Local, Ollama | `AI_PROVIDER=local`, `AI_BASE_URL=http://localhost:11434/v1` (default), `AI_MODEL=llama3.1` (default). Uses your own Ollama; pull the model there first. | Your machine |
 | Local, LM Studio | `AI_PROVIDER=local`, `AI_BASE_URL=http://localhost:1234/v1`, `AI_MODEL` = the model id LM Studio shows | Your machine |
 | Local, llama.cpp server or vLLM | `AI_PROVIDER=local`, `AI_BASE_URL` = that server's `/v1` URL | Wherever that server runs |
 | Anthropic | `ANTHROPIC_API_KEY`. Model defaults to `claude-opus-5-5`, set with `AI_MODEL`. `AI_PROVIDER` is optional here. | Anthropic |

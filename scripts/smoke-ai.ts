@@ -246,6 +246,7 @@ describe("readAIConfig", () => {
     const local = (baseURL: string) => isLocal({ provider: "local", model: "m", baseURL });
     assert.equal(local("http://192.168.1.20:11434/v1"), true);
     assert.equal(local("https://ollama.example.com/v1"), false);
+    assert.equal(local("http://ollama:11434/v1"), true);
   });
 
   it("defaults to anthropic when ANTHROPIC_API_KEY is set", () => {

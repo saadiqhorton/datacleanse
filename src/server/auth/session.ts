@@ -1,29 +1,26 @@
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
-import { sha256 } from "../ids";
-import { lookupSession, markTwoFactorPassed, createSessionRecord, revokeAllSessions, revokeSession, SESSION_TTL_MS, type SessionRecord } from "./sessions";
+import { db } from "../db";
+import { authReady, getAuth } from "./better-auth";
 import { getUserById, type UserRecord } from "./users";
 import { safeNext } from "./redirects";
 
-/** Cookie holding the raw session token. Only sha256(token) is stored server-side. */
-export const SESSION_COOKIE = "dc_session";
 /** Request header set by src/proxy.ts with the requested path and query, used for ?next=. */
 export const PATH_HEADER = "x-dc-pathname";
 
-export interface CurrentSession {
-  user: UserRecord;
-  session: SessionRecord;
+export interface SessionInfo {
+  /** Better Auth session id. */
+  id: string;
+  userId: string;
+  userAgent: string;
+  createdAt: number;
+  expiresAt: number;
 }
 
-export function sessionCookieOptions() {
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
-  };
+export interface CurrentSession {
+  user: UserRecord;
+  session: SessionInfo;
 }
 
 type Resolved =
@@ -32,17 +29,30 @@ type Resolved =
   | { status: "ok"; current: CurrentSession };
 
 async function resolve(): Promise<Resolved> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) return { status: "signed_out" };
+  const requestHeaders = await headers();
   // Session lookup reads the clock and the database, so it must run at request time, never in a
-  // prefetch prerender (where cookies are known but Date.now() is not allowed).
+  // prefetch prerender (where request data is known but Date.now() is not allowed).
   await connection();
-  const session = lookupSession(token);
-  if (!session) return { status: "signed_out" };
-  const user = getUserById(session.userId);
+  await authReady();
+  const result = await getAuth().api.getSession({ headers: requestHeaders });
+  if (!result) return { status: "signed_out" };
+  const user = getUserById(result.user.id);
   if (!user) return { status: "signed_out" };
   if (user.disabled) return { status: "disabled", userId: user.id };
-  return { status: "ok", current: { user, session } };
+  const s = result.session;
+  return {
+    status: "ok",
+    current: {
+      user,
+      session: {
+        id: s.id,
+        userId: s.userId,
+        userAgent: s.userAgent ?? "",
+        createdAt: new Date(s.createdAt).getTime(),
+        expiresAt: new Date(s.expiresAt).getTime(),
+      },
+    },
+  };
 }
 
 /** The signed-in user and session, or null when signed out, expired, or disabled. */
@@ -51,10 +61,9 @@ export async function getSession(): Promise<CurrentSession | null> {
   return r.status === "ok" ? r.current : null;
 }
 
-/** Id of the session behind the cookie, without checking it is still valid. Null when no cookie. */
+/** Id of the current session, or null when signed out. */
 export async function getCurrentSessionId(): Promise<string | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  return token ? sha256(token) : null;
+  return (await getSession())?.session.id ?? null;
 }
 
 async function nextQuery(): Promise<string> {
@@ -64,22 +73,17 @@ async function nextQuery(): Promise<string> {
 }
 
 /**
- * For protected pages and server functions. Redirects when the visitor must sign in or pass
- * two-factor first. Disabled accounts lose all their sessions.
- * Call inside a <Suspense> boundary (cacheComponents): it reads cookies.
+ * For protected pages and server functions. Redirects to sign-in when signed out; disabled accounts
+ * lose all their sessions. Call inside a <Suspense> boundary (cacheComponents): it reads request headers.
  */
 export async function requireUser(): Promise<CurrentSession> {
   const r = await resolve();
   if (r.status === "signed_out") redirect(`/signin${await nextQuery()}`);
   if (r.status === "disabled") {
-    revokeAllSessions(r.userId);
+    revokeAllAuthSessions(r.userId);
     redirect("/signin?error=disabled");
   }
-  const { current } = r;
-  if (current.user.totpEnabled && !current.session.twoFactorPassed) {
-    redirect(`/signin/2fa${await nextQuery()}`);
-  }
-  return current;
+  return r.current;
 }
 
 /** requireUser plus an admin role check. Non-admins get a 404, not a hint that the page exists. */
@@ -89,33 +93,13 @@ export async function requireAdmin(): Promise<CurrentSession> {
   return current;
 }
 
-/**
- * Creates a session and sets the cookie. Only call from a Server Function or Route Handler,
- * because cookies cannot be written during render.
- */
-export async function signIn(userId: string, opts: { twoFactorPassed: boolean; userAgent?: string }): Promise<void> {
-  const token = createSessionRecord(userId, {
-    twoFactorPassed: opts.twoFactorPassed,
-    userAgent: opts.userAgent ?? (await headers()).get("user-agent") ?? "",
-  });
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions());
-}
-
-/** Marks the current session as having passed the second factor. */
-export async function passTwoFactor(): Promise<void> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) return;
-  const session = lookupSession(token);
-  if (session) markTwoFactorPassed(session.id);
-}
-
-/** Revokes the current session and clears the cookie. Only from a Server Function or Route Handler. */
+/** Ends the current session and clears the cookie. Only from a Server Function or Route Handler. */
 export async function signOut(): Promise<void> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (token) {
-    const session = lookupSession(token);
-    if (session) revokeSession(session.userId, session.id);
-  }
-  store.delete(SESSION_COOKIE);
+  await authReady();
+  await getAuth().api.signOut({ headers: await headers() });
+}
+
+/** Deletes every Better Auth session for a user (disable, delete account, password reset). */
+export function revokeAllAuthSessions(userId: string): void {
+  db().prepare("DELETE FROM auth_session WHERE userId = ?").run(userId);
 }
