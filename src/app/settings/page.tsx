@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Suspense, type ReactNode } from "react";
 import { AccountButton, AppHeader } from "@/components/layout";
 import { Button, Card, Mono, StatusBadge } from "@/components/ui";
@@ -6,7 +7,13 @@ import { requireUser } from "@/server/auth/session";
 import { getAISettingsView, type InstanceAIView } from "@/server/settings/ai";
 import { formatDate } from "@/server/settings/format";
 import { getPrivacySettings, CLEANING_MODE_LABELS, RETENTION_LABELS, RETENTION_HOURS, CLEANING_MODES } from "@/server/settings/privacy";
-import { listSessionViews, passwordChangedLabel, type SessionView } from "@/server/settings/security";
+import { SettingsError } from "@/server/settings/errors";
+import {
+  getPasswordInfo,
+  listSessionViews,
+  passwordChangedLabel,
+  type SessionView,
+} from "@/server/settings/security";
 import { signOutOthersAction } from "./actions";
 import { AIProviderForm } from "./_ui/AIProviderForm";
 import { DeleteAccount } from "./_ui/DeleteAccount";
@@ -16,7 +23,6 @@ import { ProfileForm } from "./_ui/ProfileForm";
 import { RevokeSessionButton } from "./_ui/RevokeSessionButton";
 import { Row } from "./_ui/Row";
 import { SettingsNav } from "./_ui/SettingsNav";
-import { TwoFactorSetup } from "./_ui/TwoFactorSetup";
 
 export const metadata: Metadata = {
   title: "Settings · DataCleanse",
@@ -81,42 +87,52 @@ function sessionDescription(sessions: SessionView[]): string {
 
 async function SecuritySection() {
   const { user, session } = await requireUser();
-  const sessions = listSessionViews(user.id, session.id);
+  const passwordInfo = getPasswordInfo(user.id);
+
+  let sessions: SessionView[] = [];
+  let sessionError: string | null = null;
+  try {
+    sessions = await listSessionViews(user.id, await headers(), session.id);
+  } catch (err) {
+    if (!(err instanceof SettingsError)) throw err;
+    sessionError = err.message;
+  }
   const otherCount = sessions.filter((s) => !s.current).length;
 
   return (
     <Card>
-      <TwoFactorSetup enabled={user.totpEnabled} />
-      <PasswordSection
-        hasPassword={user.hasPassword}
-        changedLabel={passwordChangedLabel(user.passwordChangedAt)}
-      />
-      <Row title="Active sessions" description={sessionDescription(sessions)}>
+      <PasswordSection changedLabel={passwordChangedLabel(passwordInfo?.changedAt ?? null)} />
+      <Row
+        title="Active sessions"
+        description={sessionError ?? sessionDescription(sessions)}
+      >
         <form action={signOutOthersAction}>
-          <Button type="submit" variant="secondary" size="md" disabled={otherCount === 0}>
+          <Button type="submit" variant="secondary" size="md" disabled={sessionError === null && otherCount === 0}>
             Sign out others
           </Button>
         </form>
       </Row>
-      <ul aria-label="Signed-in devices" className="divide-y divide-divider">
-        {sessions.map((s) => (
-          <li
-            key={s.id}
-            className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
-          >
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                <span className="break-words">{s.label}</span>
-                {s.current && <StatusBadge status="ready">This browser</StatusBadge>}
+      {sessions.length > 0 && (
+        <ul aria-label="Signed-in devices" className="divide-y divide-divider">
+          {sessions.map((s) => (
+            <li
+              key={s.id}
+              className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
+            >
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                  <span className="break-words">{s.label}</span>
+                  {s.current && <StatusBadge status="ready">This browser</StatusBadge>}
+                </div>
+                <div className="text-[13px] text-slate">
+                  {s.current ? "Active now" : `Last active ${s.lastActive}`}
+                </div>
               </div>
-              <div className="text-[13px] text-slate">
-                {s.current ? "Active now" : `Last active ${s.lastActive}`}
-              </div>
-            </div>
-            {!s.current && <RevokeSessionButton sessionId={s.id} />}
-          </li>
-        ))}
-      </ul>
+              {!s.current && <RevokeSessionButton sessionId={s.id} />}
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

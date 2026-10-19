@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { AccountButton, AppHeader, type NavItem } from "@/components/layout";
 import { requireAdmin } from "@/server/auth/session";
@@ -20,22 +19,12 @@ export const ADMIN_PAGES: NavItem[] = [
  * inside a <Suspense> boundary. Non-admins get a 404 from here before any admin data is read.
  */
 export async function AdminFrame({ active, children }: { active: AdminSection; children: ReactNode }) {
-  const { session } = await requireAdmin();
+  await requireAdmin();
 
   return (
     <>
       <div className="flex flex-wrap justify-between gap-2 bg-ink px-8 py-3 text-sm font-medium leading-[normal] text-white">
-        {session.twoFactorPassed ? (
-          <span>Admin mode · two-factor on</span>
-        ) : (
-          <span>
-            Admin mode · two-factor off —{" "}
-            <Link href="/settings#security" className="text-white underline">
-              turn it on in Settings
-            </Link>
-          </span>
-        )}
-        <span className="text-white/65">Self-hosted · v{packageJson.version}</span>
+        <span>Admin mode · Self-hosted · v{packageJson.version}</span>
       </div>
 
       <AppHeader

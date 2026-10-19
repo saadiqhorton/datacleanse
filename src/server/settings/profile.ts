@@ -23,8 +23,9 @@ export function getProfile(userId: string): UserRecord {
 }
 
 /**
- * Updates name and email. The email is normalized (trimmed, lowercased) and must be unique across
- * accounts. Throws SettingsError with a message that is safe to show.
+ * Updates the app's name and email. An email change is also written to Better Auth's auth_user row in the
+ * same transaction, so both tables always agree. The email must be unique across both tables.
+ * The name in auth_user is updated by the caller through auth.api.updateUser.
  */
 export function updateProfile(userId: string, raw: ProfileInput): UserRecord {
   const parsed = profileSchema.safeParse(raw);
@@ -33,15 +34,29 @@ export function updateProfile(userId: string, raw: ProfileInput): UserRecord {
   const email = normalizeEmail(parsed.data.email);
   if (!email) throw new SettingsError("Enter a valid email address.");
 
+  const conn = db();
   const current = getProfile(userId);
-  const taken = findUserByEmail(email);
-  if (taken && taken.id !== userId) throw new SettingsError("An account with this email already exists.");
-
   const emailChanged = email !== current.email;
+
+  if (emailChanged) {
+    const takenHere = findUserByEmail(email);
+    const takenInAuth = conn.prepare("SELECT id FROM auth_user WHERE email = ?").get(email) as { id: string } | undefined;
+    if ((takenHere && takenHere.id !== userId) || (takenInAuth && takenInAuth.id !== userId)) {
+      throw new SettingsError("An account with this email already exists.");
+    }
+  }
+
   try {
-    db().prepare("UPDATE users SET name = ?, email = ? WHERE id = ?").run(parsed.data.name, email, userId);
+    conn.transaction(() => {
+      conn.prepare("UPDATE users SET name = ?, email = ? WHERE id = ?").run(parsed.data.name, email, userId);
+      if (emailChanged) {
+        conn
+          .prepare("UPDATE auth_user SET email = ?, updatedAt = ? WHERE id = ?")
+          .run(email, new Date().toISOString(), userId);
+      }
+    })();
   } catch (err) {
-    if (isUniqueViolation(err, "users.email")) {
+    if (isUniqueViolation(err, "users.email") || isUniqueViolation(err, "auth_user.email")) {
       throw new SettingsError("An account with this email already exists.");
     }
     throw err;

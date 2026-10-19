@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { signupsOpen } from "@/server/auth/users";
+import { hasUnclaimedUsers, signupsOpen } from "@/server/auth/users";
 import { AuthShell } from "../auth/_ui/AuthShell";
 import { SignUpForm } from "./SignUpForm";
 
@@ -22,6 +22,8 @@ export default function SignUpPage() {
 async function SignUpGate() {
   await connection();
   const open = signupsOpen();
+  // An account from before the switch to Better Auth is claimed by signing up with its email.
+  const claiming = !open && hasUnclaimedUsers();
   const signInLink = (
     <p className="text-sm text-slate">
       Already have an account?{" "}
@@ -30,6 +32,17 @@ async function SignUpGate() {
       </Link>
     </p>
   );
+  if (claiming) {
+    return (
+      <AuthShell
+        title="Set a password"
+        subtitle="Sign-in has moved to email and password. Use the email of your existing account to keep your files and settings."
+        footer={signInLink}
+      >
+        <SignUpForm />
+      </AuthShell>
+    );
+  }
   if (!open) {
     return (
       <AuthShell title="Sign-ups are closed" subtitle="This DataCleanse already has an owner." footer={signInLink}>

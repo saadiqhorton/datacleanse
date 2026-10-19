@@ -1,87 +1,56 @@
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { setupTestEnv } from "../testing";
 import { db } from "../db";
-import { audit } from "../audit";
-import { authenticate, changePassword, createUser, AuthError, getUserById, findUserByEmail } from "./users";
-import { createSessionRecord, listSessions, lookupSession, sessionIdFromToken } from "./sessions";
+import { findUserByEmail, getUserById, insertAppUser, normalizeEmail, signupsOpen } from "./users";
 
-test("first user is admin, second is a regular user, and each gets settings", async () => {
+afterEach(() => {
+  delete process.env.ALLOW_SIGNUPS;
+});
+
+test("the first app user is the owner (admin), later ones are regular users, and each gets settings", () => {
   setupTestEnv();
-  const first = await createUser({ email: "Owner@Example.com", name: "Owner", password: "owner-password-1" });
-  const second = await createUser({ email: "maria@northwind.co", name: "Maria", password: "maria-password-1" });
-  assert.equal(first.role, "admin");
-  assert.equal(first.email, "owner@example.com");
-  assert.equal(second.role, "user");
+  insertAppUser("auth_first", "Owner@Example.com", "Owner");
+  insertAppUser("auth_second", "maria@northwind.co", " Maria ");
+  assert.equal(getUserById("auth_first")?.role, "admin");
+  assert.equal(getUserById("auth_first")?.email, "owner@example.com");
+  assert.equal(getUserById("auth_second")?.role, "user");
+  assert.equal(getUserById("auth_second")?.name, "Maria");
   const settings = db().prepare("SELECT COUNT(*) AS n FROM user_settings").get() as { n: number };
   assert.equal(settings.n, 2);
 });
 
-test("duplicate email (any case) is rejected with email_taken", async () => {
+test("insertAppUser is idempotent for the same id", () => {
   setupTestEnv();
-  await createUser({ email: "a@example.com", name: "A", password: "password-long-1" });
-  await assert.rejects(createUser({ email: "A@EXAMPLE.com", name: "A2" }), (err: unknown) => {
-    return err instanceof AuthError && err.code === "email_taken";
-  });
+  insertAppUser("auth_once", "once@example.com", "Once");
+  insertAppUser("auth_once", "once@example.com", "Once");
+  const n = db().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+  assert.equal(n.n, 1);
 });
 
-test("createUser validates email and password length", async () => {
+test("sign-ups are open only for the first account unless ALLOW_SIGNUPS=1", () => {
   setupTestEnv();
-  await assert.rejects(createUser({ email: "not-an-email", name: "x" }), { code: "invalid_email" });
-  await assert.rejects(createUser({ email: "ok@example.com", name: "x", password: "short" }), { code: "weak_password" });
+  assert.equal(signupsOpen(), true);
+  insertAppUser("auth_owner", "owner@example.com", "Owner");
+  assert.equal(signupsOpen(), false);
+  process.env.ALLOW_SIGNUPS = "1";
+  assert.equal(signupsOpen(), true);
 });
 
-test("authenticate accepts the right password and rejects the rest", async () => {
-  setupTestEnv();
-  const user = await createUser({ email: "u@example.com", name: "U", password: "password-long-1" });
-  assert.equal((await authenticate("u@example.com", "password-long-1"))?.id, user.id);
-  assert.equal(await authenticate("u@example.com", "wrong-password-1"), null);
-  assert.equal(await authenticate("nobody@example.com", "password-long-1"), null);
-  assert.equal(await authenticate("garbage", "password-long-1"), null);
+test("normalizeEmail trims, lowercases, and rejects non-addresses", () => {
+  assert.equal(normalizeEmail("  Maria@Northwind.CO "), "maria@northwind.co");
+  assert.equal(normalizeEmail("not-an-email"), null);
+  assert.equal(normalizeEmail(`${"a".repeat(250)}@x.co`), null);
 });
 
-test("disabled users cannot authenticate", async () => {
+test("user records never expose credentials, and the account is found by any-case email", () => {
   setupTestEnv();
-  const user = await createUser({ email: "d@example.com", name: "D", password: "password-long-1" });
-  db().prepare("UPDATE users SET disabled = 1 WHERE id = ?").run(user.id);
-  assert.equal(await authenticate("d@example.com", "password-long-1"), null);
-});
-
-test("magic-link-only accounts (no password) cannot sign in with a password", async () => {
-  setupTestEnv();
-  await createUser({ email: "m@example.com", name: "M" });
-  assert.equal(await authenticate("m@example.com", "anything-long-1"), null);
-});
-
-test("changePassword checks the current password and signs out other sessions", async () => {
-  setupTestEnv();
-  const user = await createUser({ email: "c@example.com", name: "C", password: "old-password-1" });
-  const keep = createSessionRecord(user.id, { twoFactorPassed: false, userAgent: "a" });
-  const other = createSessionRecord(user.id, { twoFactorPassed: false, userAgent: "b" });
-  await assert.rejects(changePassword(user.id, "bad-password-1", "new-password-1", sessionIdFromToken(keep)), {
-    code: "wrong_password",
-  });
-  await changePassword(user.id, "old-password-1", "new-password-1", sessionIdFromToken(keep));
-  assert.equal(await authenticate("c@example.com", "old-password-1"), null);
-  assert.ok((await authenticate("c@example.com", "new-password-1")) !== null);
-  assert.ok(lookupSession(keep), "current session stays signed in");
-  assert.equal(lookupSession(other), null, "other session is signed out");
-  assert.equal(listSessions(user.id).length, 1);
-});
-
-test("getUserById and findUserByEmail never expose the password hash or TOTP secret", async () => {
-  setupTestEnv();
-  const user = await createUser({ email: "p@example.com", name: "P", password: "password-long-1" });
-  const byId = getUserById(user.id) as unknown as Record<string, unknown>;
+  insertAppUser("auth_p", "p@example.com", "P");
+  const byId = getUserById("auth_p") as unknown as Record<string, unknown>;
   assert.equal(byId.password_hash, undefined);
-  assert.equal(byId.passwordHash, undefined);
   assert.equal(byId.totp_secret, undefined);
-  assert.equal(findUserByEmail("P@example.com")?.id, user.id);
-});
-
-test("audit writes an entry", () => {
-  setupTestEnv();
-  audit("auth.test_event", "hello");
-  const row = db().prepare("SELECT action, detail FROM audit_log").get() as { action: string; detail: string };
-  assert.deepEqual(row, { action: "auth.test_event", detail: "hello" });
+  assert.equal(byId.hasPassword, true);
+  assert.equal(byId.totpEnabled, false);
+  assert.equal(findUserByEmail("P@example.com")?.id, "auth_p");
+  assert.equal(findUserByEmail("nobody@example.com"), null);
 });

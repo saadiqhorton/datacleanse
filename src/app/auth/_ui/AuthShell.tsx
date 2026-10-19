@@ -10,7 +10,7 @@ const highlights = [
   "Files auto-delete after 24 hours",
 ];
 
-/** Two-column layout shared by the sign-in, sign-up, two-factor and password reset pages. */
+/** Two-column layout shared by the sign-in, sign-up and password reset pages. */
 export function AuthShell({
   title,
   subtitle,
@@ -67,7 +67,7 @@ export function FormError({ children }: { children: ReactNode }) {
   );
 }
 
-/** Neutral confirmation text, e.g. "Check your email for a sign-in link." */
+/** Neutral confirmation text, e.g. "If an account exists for that email, we sent a reset link." */
 export function FormNotice({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "error" }) {
   if (!children) return null;
   return (

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { MESSAGES } from "@/server/auth/actions-logic";
 import { AuthShell } from "../auth/_ui/AuthShell";
 import { NewPasswordForm, RequestResetForm } from "./ResetForms";
 
@@ -22,6 +23,7 @@ export default function ResetPasswordPage({ searchParams }: { searchParams: Prom
 async function ResetStep({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const raw = Array.isArray(params.token) ? params.token[0] : params.token;
+  const error = Array.isArray(params.error) ? params.error[0] : params.error;
   const footer = (
     <p className="text-sm text-slate">
       Remembered it?{" "}
@@ -31,6 +33,7 @@ async function ResetStep({ searchParams }: { searchParams: Promise<Params> }) {
     </p>
   );
 
+  // Better Auth sends the emailed link here with ?token=..., or ?error=INVALID_TOKEN when it is dead.
   if (raw && /^[A-Za-z0-9_-]{20,200}$/.test(raw)) {
     return (
       <AuthShell
@@ -49,7 +52,7 @@ async function ResetStep({ searchParams }: { searchParams: Promise<Params> }) {
       subtitle="We'll email you a link to choose a new one."
       footer={footer}
     >
-      <RequestResetForm />
+      <RequestResetForm notice={error === "INVALID_TOKEN" ? MESSAGES.resetLinkInvalid : null} />
     </AuthShell>
   );
 }

@@ -1,7 +1,6 @@
 import { audit } from "../audit";
-import { AuthError, createUser, normalizeEmail, type Role } from "../auth/users";
-import { revokeAllSessions } from "../auth/sessions";
-import { requestMagicLink } from "../auth/tokens";
+import { revokeAllAuthSessions } from "../auth/session";
+import type { Role } from "../auth/users";
 import { db } from "../db";
 import { AdminError } from "./errors";
 import { assertAdminActor } from "./guard";
@@ -14,7 +13,6 @@ export interface AdminUser {
   email: string;
   name: string;
   role: Role;
-  totpEnabled: boolean;
   disabled: boolean;
   createdAt: number;
   /** Files not yet deleted. */
@@ -26,7 +24,6 @@ interface UserRow {
   email: string;
   name: string;
   role: Role;
-  totp_enabled: number;
   disabled: number;
   created_at: number;
   file_count: number;
@@ -47,7 +44,7 @@ export function listUsers(opts: { page?: number; pageSize?: number } = {}): Page
   const { page, offset } = resolvePage(opts.page ?? 1, total, pageSize);
   const rows = conn
     .prepare(
-      `SELECT u.id, u.email, u.name, u.role, u.totp_enabled, u.disabled, u.created_at,
+      `SELECT u.id, u.email, u.name, u.role, u.disabled, u.created_at,
               (SELECT COUNT(*) FROM files f
                  WHERE f.user_id = u.id AND f.deleted_at IS NULL AND f.status != 'deleted') AS file_count
        FROM users u
@@ -62,7 +59,6 @@ export function listUsers(opts: { page?: number; pageSize?: number } = {}): Page
       email: row.email,
       name: row.name,
       role: row.role,
-      totpEnabled: row.totp_enabled === 1,
       disabled: row.disabled === 1,
       createdAt: row.created_at,
       fileCount: row.file_count,
@@ -130,42 +126,11 @@ export function setUserDisabled(actorId: string, userId: string, disabled: boole
 
   db().transaction(() => {
     db().prepare("UPDATE users SET disabled = ? WHERE id = ?").run(disabled ? 1 : 0, userId);
-    if (disabled) revokeAllSessions(userId);
+    if (disabled) revokeAllAuthSessions(userId);
   })();
   audit(
     disabled ? "admin.user_disabled" : "admin.user_enabled",
     disabled ? `Disabled ${target.email}. Their sessions were signed out.` : `Enabled ${target.email}.`,
     { actor: actorId },
   );
-}
-
-/**
- * Creates an account without a password and emails it a single-use sign-in link. The account
- * is a regular user. When the email cannot be sent, the account still exists and emailSent is false.
- */
-export async function inviteUser(
-  actorId: string,
-  rawEmail: string,
-  rawName = "",
-): Promise<{ email: string; emailSent: boolean }> {
-  assertAdminActor(actorId);
-  const email = normalizeEmail(rawEmail);
-  if (!email) throw new AdminError("Enter a valid email address.");
-
-  let user;
-  try {
-    user = await createUser({ email, name: rawName.trim().slice(0, 100) });
-  } catch (err) {
-    if (err instanceof AuthError) throw new AdminError(err.message);
-    throw err;
-  }
-  audit("admin.user_invited", `Invited ${user.email}.`, { actor: actorId });
-
-  try {
-    await requestMagicLink(user.email);
-    return { email: user.email, emailSent: true };
-  } catch (err) {
-    console.error("[admin] could not send invite email", err);
-    return { email: user.email, emailSent: false };
-  }
 }

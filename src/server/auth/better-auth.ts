@@ -6,7 +6,7 @@ import { audit } from "../audit";
 import { db, type DB } from "../db";
 import { sendEmail } from "../email";
 import { env } from "../env";
-import { getUserById, insertAppUser, signupsOpen } from "./users";
+import { getUserById, insertAppUser, signupsOpen, unclaimedUserIdForEmail } from "./users";
 
 /**
  * Email + password auth via Better Auth (https://better-auth.com/docs/authentication/email-password).
@@ -41,7 +41,10 @@ function authOptions(conn: DB) {
       user: {
         create: {
           // Single-user by default: only the first account may sign up (ALLOW_SIGNUPS=1 reopens it).
-          before: async () => {
+          before: async (user) => {
+            // An account from before Better Auth is claimed by signing up with its email: reuse its id.
+            const legacyId = unclaimedUserIdForEmail(user.email);
+            if (legacyId) return { data: { ...user, id: legacyId } };
             if (!signupsOpen()) {
               throw new APIError("FORBIDDEN", {
                 message: "Sign-ups are closed on this DataCleanse. Ask the owner to invite you.",

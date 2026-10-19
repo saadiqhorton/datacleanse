@@ -4,13 +4,14 @@ import { getUserById } from "../auth/users";
 import { getUserAISettings } from "../ai/config";
 import { SettingsError } from "./errors";
 import { getPrivacySettings } from "./privacy";
+import { getPasswordInfo } from "./security";
 
 export const EXPORT_FORMAT = "datacleanse-export";
 export const EXPORT_VERSION = 1;
 
 /**
  * Everything the account holds, as plain JSON. Secrets are left out on purpose: no password hash,
- * TOTP secret, API key, session ids or login tokens. Only whether they are set is included.
+ * API key, session ids or tokens. Only whether they are set is included.
  */
 export interface AccountExport {
   format: typeof EXPORT_FORMAT;
@@ -24,7 +25,6 @@ export interface AccountExport {
     createdAt: string;
     passwordSet: boolean;
     passwordChangedAt: string | null;
-    twoFactorEnabled: boolean;
   };
   settings: {
     retentionHours: number;
@@ -95,6 +95,7 @@ export function buildAccountExport(userId: string, now = Date.now()): AccountExp
   const conn = db();
   const privacy = getPrivacySettings(userId);
   const ai = getUserAISettings(userId);
+  const password = getPasswordInfo(userId);
 
   const ruleSetRows = conn
     .prepare("SELECT id, name, header_match_json, created_at, updated_at FROM rule_sets WHERE user_id = ? ORDER BY created_at")
@@ -196,9 +197,8 @@ export function buildAccountExport(userId: string, now = Date.now()): AccountExp
       name: user.name,
       role: user.role,
       createdAt: new Date(user.createdAt).toISOString(),
-      passwordSet: user.hasPassword,
-      passwordChangedAt: iso(user.passwordChangedAt),
-      twoFactorEnabled: user.totpEnabled,
+      passwordSet: password !== null,
+      passwordChangedAt: iso(password?.changedAt ?? null),
     },
     settings: {
       retentionHours: privacy.retentionHours,

@@ -1,15 +1,15 @@
 import { getSession } from "@/server/auth/session";
 import { exportAccount } from "@/server/settings/export";
 
-/** Downloads the signed-in user's data as JSON. Secrets are excluded (see server/settings/export.ts). */
+/**
+ * Downloads the signed-in user's data as JSON. Secrets are excluded: the export reads only app tables
+ * (never auth_account or auth_session), and server/settings/export.ts omits password and key material.
+ */
 export async function GET() {
   // Reads the session cookie, so the response is always per request and never cached.
   const current = await getSession();
   if (!current) {
     return Response.json({ error: "Sign in required.", code: "unauthorized" }, { status: 401 });
-  }
-  if (current.user.totpEnabled && !current.session.twoFactorPassed) {
-    return Response.json({ error: "Finish two-factor sign-in first.", code: "two_factor_required" }, { status: 403 });
   }
 
   const payload = exportAccount(current.user.id);

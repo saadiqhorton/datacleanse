@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { hasAnyUser, signupsOpen } from "@/server/auth/users";
+import { PASSWORD_CHANGED_NOTICE } from "@/server/auth/actions-logic";
 import { safeNext } from "@/server/auth/redirects";
 import { AuthShell } from "../auth/_ui/AuthShell";
 import { SignInForm } from "./SignInForm";
@@ -19,10 +20,6 @@ function first(value: string | string[] | undefined): string | undefined {
 }
 
 const NOTICES = new Map<string, { tone: "info" | "error"; text: string }>([
-  [
-    "link_expired",
-    { tone: "error", text: "That sign-in link has expired or was already used. Request a new one below." },
-  ],
   ["disabled", { tone: "error", text: "This account has been disabled. Contact your administrator." }],
 ]);
 
@@ -53,7 +50,7 @@ async function SignInFormFromParams({ searchParams }: { searchParams: Promise<Pa
   const notice =
     (error ? NOTICES.get(error) : undefined) ??
     (first(params.reset) === "1"
-      ? { tone: "info" as const, text: "Your password has been updated. Sign in with your new password." }
+      ? { tone: "info" as const, text: PASSWORD_CHANGED_NOTICE }
       : null);
   return <SignInForm next={next} notice={notice} />;
 }

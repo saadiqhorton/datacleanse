@@ -1,15 +1,20 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { audit } from "../audit";
-import { authenticate, AuthError, createUser, normalizeEmail, signupsOpen, type UserRecord } from "./users";
-import { passwordProblem } from "./passwords";
+import { env } from "../env";
+import { authReady, getAuth } from "./better-auth";
+import {
+  MESSAGES,
+  apiFailure,
+  newPasswordProblem,
+  resetFailure,
+  signInFailure,
+  signUpFailure,
+} from "./actions-logic";
 import { safeNext } from "./redirects";
-import { emailRequestLimiter, signInLimiter, twoFactorLimiter } from "./rateLimit";
-import { getSession, passTwoFactor, signIn, signOut } from "./session";
-import { requestMagicLink, requestPasswordReset, resetPassword } from "./tokens";
-import { verifyTotp } from "./totp";
+import { getSession, signOut } from "./session";
+import { normalizeEmail } from "./users";
 
 /** State returned to the forms through useActionState. Never contains passwords. */
 export type FormState = {
@@ -21,156 +26,87 @@ export type FormState = {
   linkInvalid?: boolean;
 } | null;
 
-const CHECK_EMAIL_MESSAGE = "Check your email for a sign-in link.";
-const RESET_SENT_MESSAGE = "If an account exists for that address, we've sent a reset link. Check your email.";
-const EMAIL_ERROR = "Enter a valid email address.";
-
 function field(formData: FormData, name: string): string {
   const v = formData.get(name);
   return typeof v === "string" ? v : "";
 }
 
-/** Client IP for rate limiting. Trusts the first X-Forwarded-For hop, so the proxy must set it. */
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  const forwarded = h.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim() || "unknown";
-  return h.get("x-real-ip")?.trim() || "unknown";
-}
-
-function minutesUntil(ms: number): number {
-  return Math.max(1, Math.ceil(ms / 60_000));
-}
-
-/** Sign-in form: password sign-in, or a magic link when intent is "magic". */
+/** Sign-in form. Email and password through Better Auth; redirects to `next` on success. */
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const intent = field(formData, "intent");
   const next = safeNext(field(formData, "next"));
   const rawEmail = field(formData, "email");
   const email = normalizeEmail(rawEmail);
-  if (!email) return { error: EMAIL_ERROR, email: rawEmail };
-
-  const key = `${email}|${await clientIp()}`;
-
-  if (intent === "magic") {
-    if (emailRequestLimiter.isLimited(key)) return { message: CHECK_EMAIL_MESSAGE, email };
-    emailRequestLimiter.record(key);
-    try {
-      await requestMagicLink(email);
-    } catch (err) {
-      console.error("[auth] could not send sign-in link", err);
-      return { error: "We couldn't send the sign-in link. Try again in a moment.", email };
-    }
-    return { message: CHECK_EMAIL_MESSAGE, email };
-  }
-
+  if (!email) return { error: MESSAGES.email, email: rawEmail };
   const password = field(formData, "password");
-  if (!password) return { error: "Enter your password.", email };
+  if (!password) return { error: MESSAGES.password, email: rawEmail };
 
-  if (signInLimiter.isLimited(key)) {
-    const wait = minutesUntil(signInLimiter.retryAfterMs(key));
-    return { error: `Too many failed attempts. Try again in ${wait} minute${wait === 1 ? "" : "s"}.`, email };
-  }
-
-  const user = await authenticate(email, password);
-  if (!user) {
-    signInLimiter.record(key);
+  await authReady();
+  let userId: string;
+  try {
+    const res = await getAuth().api.signInEmail({ body: { email, password } });
+    userId = res.user.id;
+  } catch (err) {
+    if (!apiFailure(err)) throw err;
     audit("auth.sign_in_failed", `Failed password sign-in for ${email}.`);
-    return { error: "Email or password is incorrect.", email };
+    return { error: signInFailure(err), email: rawEmail };
   }
-
-  signInLimiter.reset(key);
-  await signIn(user.id, { twoFactorPassed: false });
-  // With TOTP the sign-in is only complete after the second factor, which audits auth.signed_in.
-  if (!user.totpEnabled) audit("auth.signed_in", "Signed in with password.", { actor: user.id });
-  redirect(user.totpEnabled ? `/signin/2fa?next=${encodeURIComponent(next)}` : next);
+  audit("auth.signed_in", "Signed in with password.", { actor: userId });
+  redirect(next);
 }
 
-/** Sign-up form. Creates the account, signs the visitor in, and goes to the file list. */
+/** Sign-up form. Creates the account (the first one becomes the owner), signs in, and goes to the file list. */
 export async function signUpAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const name = field(formData, "name").trim();
   const rawEmail = field(formData, "email");
   const password = field(formData, "password");
 
-  if (!signupsOpen()) {
-    return { error: "Sign-ups are closed on this DataCleanse. Ask the owner to invite you.", email: rawEmail, name };
-  }
-  if (!name) return { error: "Enter your name.", email: rawEmail, name };
+  if (!name) return { error: MESSAGES.name, email: rawEmail, name };
   const email = normalizeEmail(rawEmail);
-  if (!email) return { error: EMAIL_ERROR, email: rawEmail, name };
-  const problem = passwordProblem(password);
-  if (problem) return { error: problem, email, name };
+  if (!email) return { error: MESSAGES.email, email: rawEmail, name };
 
-  let user: UserRecord;
+  await authReady();
   try {
-    user = await createUser({ email, name, password });
+    // autoSignIn is on, so the session cookie is set through the nextCookies plugin. Sign-ups closed
+    // and the profile row are handled by the databaseHooks in better-auth.ts.
+    await getAuth().api.signUpEmail({ body: { name, email, password } });
   } catch (err) {
-    if (err instanceof AuthError && err.code === "email_taken") {
-      return { error: "An account with this email already exists. Sign in instead.", email, name };
-    }
-    if (err instanceof AuthError) return { error: err.message, email, name };
-    throw err;
+    if (!apiFailure(err)) throw err;
+    return { error: signUpFailure(err), email: rawEmail, name };
   }
-
-  await signIn(user.id, { twoFactorPassed: false });
-  audit("auth.signed_up", "Account created.", { actor: user.id });
   redirect("/files");
 }
 
-/** Second-factor form on /signin/2fa. */
-export async function verifyTwoFactorAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const next = safeNext(field(formData, "next"));
-  const current = await getSession();
-  if (!current) redirect(`/signin?next=${encodeURIComponent(next)}`);
-  if (!current.user.totpEnabled || current.session.twoFactorPassed) redirect(next);
-
-  // Keyed by user, not session, so signing in again does not reset the count.
-  const key = `2fa:${current.user.id}`;
-  if (twoFactorLimiter.isLimited(key)) {
-    const wait = minutesUntil(twoFactorLimiter.retryAfterMs(key));
-    return { error: `Too many incorrect codes. Try again in ${wait} minute${wait === 1 ? "" : "s"}.` };
-  }
-
-  const code = field(formData, "code").replace(/\s+/g, "");
-  if (!verifyTotp(current.user.id, code)) {
-    twoFactorLimiter.record(key);
-    audit("auth.sign_in_failed", "Incorrect two-factor code.", { actor: current.user.id });
-    return { error: "That code isn't right. Check your authenticator app and try again." };
-  }
-
-  twoFactorLimiter.reset(key);
-  await passTwoFactor();
-  audit("auth.signed_in", "Two-factor code accepted.", { actor: current.user.id });
-  redirect(next);
-}
-
-/** Reset request form. Always answers the same way, whether or not the address has an account. */
+/** Reset request form. Always gives the same answer, whether or not the address has an account. */
 export async function requestPasswordResetAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const rawEmail = field(formData, "email");
   const email = normalizeEmail(rawEmail);
-  if (!email) return { error: EMAIL_ERROR, email: rawEmail };
+  if (!email) return { error: MESSAGES.email, email: rawEmail };
 
-  const key = `reset|${email}|${await clientIp()}`;
-  if (!emailRequestLimiter.isLimited(key)) {
-    emailRequestLimiter.record(key);
-    await requestPasswordReset(email);
+  await authReady();
+  try {
+    // Better Auth emails a link to ${redirectTo}?token=... (or ?error=INVALID_TOKEN when it is dead).
+    await getAuth().api.requestPasswordReset({ body: { email, redirectTo: `${env.appUrl}/reset-password` } });
+  } catch (err) {
+    // The answer must not depend on what went wrong, so log it for the operator and say the same thing.
+    console.error("[auth] could not start a password reset", err);
   }
-  return { message: RESET_SENT_MESSAGE, email };
+  return { message: MESSAGES.resetSent, email: rawEmail };
 }
 
-/** Sets a new password from an emailed reset link. Signs out every session. */
+/** Sets a new password from an emailed reset link. Better Auth signs out every session. */
 export async function resetPasswordAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const token = field(formData, "token");
   const password = field(formData, "password");
-  let user: UserRecord | null;
+  const problem = newPasswordProblem(password, field(formData, "confirm"));
+  if (problem) return { error: problem };
+  if (!token) return { error: MESSAGES.resetLinkInvalid, linkInvalid: true };
+
+  await authReady();
   try {
-    user = await resetPassword(token, password);
+    await getAuth().api.resetPassword({ body: { newPassword: password, token } });
   } catch (err) {
-    if (err instanceof AuthError) return { error: err.message };
-    throw err;
-  }
-  if (!user) {
-    return { error: "This reset link is invalid or has expired. Request a new one.", linkInvalid: true };
+    if (!apiFailure(err)) throw err;
+    return resetFailure(err);
   }
   redirect("/signin?reset=1");
 }

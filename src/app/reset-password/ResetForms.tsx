@@ -10,11 +10,13 @@ import {
 } from "@/server/auth/actions";
 import { FormError, FormNotice, primaryButtonClass } from "../auth/_ui/AuthShell";
 
-export function RequestResetForm() {
+export function RequestResetForm({ notice }: { notice?: string | null }) {
   const [state, action, pending] = useActionState<FormState, FormData>(requestPasswordResetAction, null);
 
   return (
     <form action={action} className="flex flex-col gap-4">
+      {notice && <FormNotice tone="error">{notice}</FormNotice>}
+
       <TextField
         label="Work email"
         type="email"
@@ -50,7 +52,17 @@ export function NewPasswordForm({ token }: { token: string }) {
         autoComplete="new-password"
         autoFocus
         required
+        minLength={10}
         hint="At least 10 characters. This signs out your other sessions."
+      />
+
+      <TextField
+        label="Confirm new password"
+        type="password"
+        name="confirm"
+        autoComplete="new-password"
+        required
+        minLength={10}
       />
 
       <FormError>{state?.error}</FormError>

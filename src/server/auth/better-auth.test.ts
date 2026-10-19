@@ -51,3 +51,15 @@ test("short passwords are rejected", async () => {
     delete process.env.ALLOW_SIGNUPS;
   }
 });
+
+test("an account from before Better Auth is claimed by signing up with its email", async () => {
+  const { db } = await import("../db");
+  db()
+    .prepare("INSERT INTO users (id, email, name, role, created_at) VALUES ('usr_legacy01', 'old@northwind.co', 'Old Owner', 'user', ?)")
+    .run(Date.now());
+  const res = await getAuth().api.signUpEmail({
+    body: { name: "Old Owner", email: "old@northwind.co", password: "correct-horse-battery" },
+  });
+  assert.equal(res.user.id, "usr_legacy01", "keeps the existing account id (files, settings)");
+  assert.equal(getUserById("usr_legacy01")?.email, "old@northwind.co");
+});

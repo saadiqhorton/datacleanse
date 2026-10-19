@@ -209,4 +209,8 @@ CREATE INDEX ai_calls_at ON ai_calls(at);
   /* 2: TOTP replay protection: the last accepted 30-second time step per user */ `
 ALTER TABLE users ADD COLUMN totp_last_step INTEGER;
 `,
+  /* 3: Better Auth replaces the custom sessions and single-use login tokens (auth_* tables) */ `
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS login_tokens;
+`,
 ];

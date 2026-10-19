@@ -118,3 +118,27 @@ export function insertAppUser(id: string, rawEmail: string, rawName: string): vo
     conn.prepare("INSERT INTO user_settings (user_id, updated_at) VALUES (?, ?)").run(id, now);
   })();
 }
+
+/**
+ * App accounts created before the switch to Better Auth have no auth_user row. Signing up again with the
+ * same email claims that account (keeping its id, files and settings), even when sign-ups are closed.
+ */
+export function unclaimedUserIdForEmail(rawEmail: string): string | null {
+  const email = normalizeEmail(rawEmail);
+  if (!email) return null;
+  const row = db()
+    .prepare(
+      `SELECT u.id FROM users u
+       WHERE u.email = ? AND NOT EXISTS (SELECT 1 FROM auth_user a WHERE a.id = u.id)`,
+    )
+    .get(email) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+/** True when some app account still has to be claimed by signing up (see unclaimedUserIdForEmail). */
+export function hasUnclaimedUsers(): boolean {
+  return (
+    db().prepare("SELECT 1 FROM users u WHERE NOT EXISTS (SELECT 1 FROM auth_user a WHERE a.id = u.id) LIMIT 1").get() !==
+    undefined
+  );
+}

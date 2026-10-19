@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { Button, TextField } from "@/components/ui";
+import { TextField } from "@/components/ui";
 import { signInAction, type FormState } from "@/server/auth/actions";
 import { FormError, FormNotice, primaryButtonClass } from "../auth/_ui/AuthShell";
 
@@ -11,7 +11,7 @@ export function SignInForm({
   notice,
 }: {
   next?: string;
-  /** Message from the URL, e.g. an expired sign-in link. */
+  /** Message from the URL, e.g. a disabled account or a password that was just reset. */
   notice?: { tone: "info" | "error"; text: string } | null;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(signInAction, null);
@@ -49,21 +49,9 @@ export function SignInForm({
 
         <FormError>{state?.error}</FormError>
 
-        <button type="submit" name="intent" value="password" disabled={pending} className={primaryButtonClass}>
+        <button type="submit" disabled={pending} className={primaryButtonClass}>
           Sign in
         </button>
-
-        <div className="flex items-center gap-3 text-[13px] text-muted">
-          <span className="h-px flex-1 bg-divider" />
-          or
-          <span className="h-px flex-1 bg-divider" />
-        </div>
-
-        <Button type="submit" name="intent" value="magic" variant="secondary" size="lg" disabled={pending}>
-          Email me a sign-in link
-        </Button>
-
-        <FormNotice>{state?.message}</FormNotice>
       </form>
     </>
   );

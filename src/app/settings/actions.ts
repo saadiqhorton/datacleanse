@@ -1,28 +1,24 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import QRCode from "qrcode";
-import { twoFactorLimiter } from "@/server/auth/rateLimit";
-import { getCurrentSessionId, passTwoFactor, requireUser, signOut } from "@/server/auth/session";
-import { AuthError, changePassword } from "@/server/auth/users";
-import { beginTotpEnrollment, confirmTotp, disableTotp } from "@/server/auth/totp";
+import { authReady, getAuth } from "@/server/auth/better-auth";
+import { requireUser, signOut } from "@/server/auth/session";
 import { deleteAccount } from "@/server/settings/account";
 import { saveUserAI, testUserAIConnection, type AIConnectionResult, type AIFormInput } from "@/server/settings/ai";
 import { SettingsError, firstIssue } from "@/server/settings/errors";
 import { updatePrivacySettings } from "@/server/settings/privacy";
-import { revokeOneSession, passwordFormSchema, setInitialPassword, signOutOtherSessions } from "@/server/settings/security";
 import { updateProfile } from "@/server/settings/profile";
+import {
+  changeOwnPassword,
+  passwordFormSchema,
+  revokeOneSession,
+  signOutOtherSessions,
+} from "@/server/settings/security";
 
 /** Result shown under a form. Never contains passwords, keys or secrets. */
 export type SettingsState = { error?: string; ok?: string } | null;
-
-export type TwoFactorEnrollment =
-  | { ok: true; secret: string; qrDataUrl: string }
-  | { ok: false; error: string };
-
-const CODE_RE = /^\d{6}$/;
-const CODE_ERROR = "That code isn't right. Check your authenticator app and try again.";
 
 /** Text fields from FormData. Missing and non-text values read as "". */
 function text(formData: FormData, name: string): string {
@@ -35,16 +31,13 @@ function optionalText(formData: FormData, name: string): string | undefined {
   return text(formData, name).trim() || undefined;
 }
 
-function minutes(ms: number): string {
-  const m = Math.max(1, Math.ceil(ms / 60_000));
-  return `${m} minute${m === 1 ? "" : "s"}`;
-}
-
-/** Profile form: name and email. */
+/** Profile form: name and email. The name is also set on the Better Auth user. */
 export async function updateProfileAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
   const { user } = await requireUser();
   try {
-    updateProfile(user.id, { name: text(formData, "name"), email: text(formData, "email") });
+    const saved = updateProfile(user.id, { name: text(formData, "name"), email: text(formData, "email") });
+    await authReady();
+    await getAuth().api.updateUser({ body: { name: saved.name }, headers: await headers() });
   } catch (err) {
     if (err instanceof SettingsError) return { error: err.message };
     throw err;
@@ -53,60 +46,7 @@ export async function updateProfileAction(_prev: SettingsState, formData: FormDa
   return { ok: "Profile saved." };
 }
 
-/** Starts (or restarts) two-factor setup. Returns the secret and a QR code for the authenticator app. */
-export async function startTwoFactorAction(): Promise<TwoFactorEnrollment> {
-  const { user } = await requireUser();
-  let enrollment: { secret: string; otpauthUrl: string };
-  try {
-    enrollment = beginTotpEnrollment(user.id);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Two-factor setup could not start." };
-  }
-  const qrDataUrl = await QRCode.toDataURL(enrollment.otpauthUrl, { errorCorrectionLevel: "M", margin: 1, width: 208 });
-  return { ok: true, secret: enrollment.secret, qrDataUrl };
-}
-
-/** Confirms enrollment with a code. Turns two-factor sign-in on. */
-export async function confirmTwoFactorAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
-  const { user } = await requireUser();
-  const code = text(formData, "code").replace(/\s+/g, "");
-  if (!CODE_RE.test(code)) return { error: "Enter the 6-digit code from your app." };
-
-  const key = `2fa-manage:${user.id}`;
-  if (twoFactorLimiter.isLimited(key)) {
-    return { error: `Too many incorrect codes. Try again in ${minutes(twoFactorLimiter.retryAfterMs(key))}.` };
-  }
-  if (!confirmTotp(user.id, code)) {
-    twoFactorLimiter.record(key);
-    return { error: CODE_ERROR };
-  }
-  twoFactorLimiter.reset(key);
-  // This session just proved possession of the authenticator app, so it should not be challenged again.
-  await passTwoFactor();
-  refresh();
-  return { ok: "Two-factor sign-in is on." };
-}
-
-/** Turns two-factor sign-in off after a valid code. */
-export async function disableTwoFactorAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
-  const { user } = await requireUser();
-  const code = text(formData, "code").replace(/\s+/g, "");
-  if (!CODE_RE.test(code)) return { error: "Enter the 6-digit code from your app." };
-
-  const key = `2fa-manage:${user.id}`;
-  if (twoFactorLimiter.isLimited(key)) {
-    return { error: `Too many incorrect codes. Try again in ${minutes(twoFactorLimiter.retryAfterMs(key))}.` };
-  }
-  if (!disableTotp(user.id, code)) {
-    twoFactorLimiter.record(key);
-    return { error: CODE_ERROR };
-  }
-  twoFactorLimiter.reset(key);
-  refresh();
-  return { ok: "Two-factor sign-in is off." };
-}
-
-/** Changes the password, or sets one when the account has none. Other sessions are signed out. */
+/** Changes the password. Other sessions are signed out; this browser stays signed in. */
 export async function changePasswordAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
   const { user } = await requireUser();
   const parsed = passwordFormSchema.safeParse({
@@ -115,43 +55,29 @@ export async function changePasswordAction(_prev: SettingsState, formData: FormD
     confirm: text(formData, "confirm"),
   });
   if (!parsed.success) return { error: firstIssue(parsed.error) };
-  if (user.hasPassword && !parsed.data.current) return { error: "Enter your current password." };
-
-  const sessionId = await getCurrentSessionId();
-  if (!sessionId) return { error: "Sign in again to change your password." };
 
   try {
-    if (user.hasPassword) {
-      await changePassword(user.id, parsed.data.current, parsed.data.next, sessionId);
-    } else {
-      await setInitialPassword(user.id, parsed.data.next, sessionId);
-    }
+    await changeOwnPassword(user.id, await headers(), parsed.data.current, parsed.data.next);
   } catch (err) {
-    if (err instanceof AuthError || err instanceof SettingsError) return { error: err.message };
+    if (err instanceof SettingsError) return { error: err.message };
     throw err;
   }
   refresh();
-  return {
-    ok: user.hasPassword
-      ? "Password changed. Other sessions were signed out."
-      : "Password set. Other sessions were signed out.",
-  };
+  return { ok: "Password changed. Other sessions were signed out." };
 }
 
 /** Signs out every session except this one. */
 export async function signOutOthersAction(): Promise<void> {
-  const { user } = await requireUser();
-  const sessionId = await getCurrentSessionId();
-  if (sessionId) signOutOtherSessions(user.id, sessionId);
+  const { user, session } = await requireUser();
+  await signOutOtherSessions(user.id, await headers(), session.id);
   refresh();
 }
 
 /** Signs out one of the user's other sessions. */
 export async function revokeSessionAction(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
-  const { user } = await requireUser();
-  const sessionId = await getCurrentSessionId();
+  const { user, session } = await requireUser();
   try {
-    revokeOneSession(user.id, sessionId, text(formData, "sessionId"));
+    await revokeOneSession(user.id, await headers(), session.id, text(formData, "sessionId"));
   } catch (err) {
     if (err instanceof SettingsError) return { error: err.message };
     throw err;
@@ -184,7 +110,8 @@ export async function deleteAccountAction(_prev: SettingsState, formData: FormDa
     if (err instanceof SettingsError) return { error: err.message };
     throw err;
   }
-  await signOut();
+  // The account's sessions are already gone; this only clears the browser's cookie.
+  await signOut().catch(() => undefined);
   redirect("/signin");
 }
 

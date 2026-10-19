@@ -5,7 +5,7 @@ import { z } from "zod";
 import { checkAIConnection } from "@/server/admin/config";
 import { AdminError } from "@/server/admin/errors";
 import { cancelJobAsAdmin } from "@/server/admin/jobs";
-import { inviteUser, setUserDisabled, setUserRole } from "@/server/admin/users";
+import { setUserDisabled, setUserRole } from "@/server/admin/users";
 import { AISettingsError, INSTANCE_PROVIDERS, setInstanceAIConfig } from "@/server/ai";
 import { requireAdmin } from "@/server/auth/session";
 
@@ -69,27 +69,6 @@ export async function manageUserAction(_prev: ActionState, formData: FormData): 
   }
   refresh();
   return { message: MANAGE_MESSAGES[op.data] };
-}
-
-export async function inviteUserAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { user } = await requireAdmin();
-  const email = text(formData, "email").trim();
-  const name = text(formData, "name").trim();
-  if (email.length > 254 || name.length > 100) return { error: "Check the email and name and try again." };
-
-  try {
-    const result = await inviteUser(user.id, email, name);
-    refresh();
-    if (!result.emailSent) {
-      return {
-        error: `${result.email} was added, but the sign-in email could not be sent. They can request a sign-in link from the sign-in page.`,
-      };
-    }
-    return { message: `Invite sent to ${result.email}. The sign-in link works once and expires in 15 minutes.` };
-  } catch (err) {
-    if (err instanceof AdminError) return { error: err.message };
-    throw err;
-  }
 }
 
 const PROVIDER_NAMES: Record<(typeof INSTANCE_PROVIDERS)[number], string> = {
