@@ -1,61 +1,34 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
-import { AccountButton, AppHeader, SideNav } from "@/components/layout";
-import { isLocal, readAIConfig, type AIConfig } from "@/lib/ai/config";
-import { Button, Card, Mono, StatusBadge, cn } from "@/components/ui";
+import { AccountButton, AppHeader } from "@/components/layout";
+import { Button, Card, Mono, StatusBadge } from "@/components/ui";
+import { requireUser } from "@/server/auth/session";
+import { getAISettingsView, type InstanceAIView } from "@/server/settings/ai";
+import { formatDate } from "@/server/settings/format";
+import { getPrivacySettings, CLEANING_MODE_LABELS, RETENTION_LABELS, RETENTION_HOURS, CLEANING_MODES } from "@/server/settings/privacy";
+import { listSessionViews, passwordChangedLabel, type SessionView } from "@/server/settings/security";
+import { signOutOthersAction } from "./actions";
+import { AIProviderForm } from "./_ui/AIProviderForm";
+import { DeleteAccount } from "./_ui/DeleteAccount";
+import { PasswordSection } from "./_ui/PasswordSection";
+import { PrivacySelect } from "./_ui/PrivacySelect";
+import { ProfileForm } from "./_ui/ProfileForm";
+import { RevokeSessionButton } from "./_ui/RevokeSessionButton";
+import { Row } from "./_ui/Row";
+import { SettingsNav } from "./_ui/SettingsNav";
+import { TwoFactorSetup } from "./_ui/TwoFactorSetup";
 
 export const metadata: Metadata = {
   title: "Settings · DataCleanse",
 };
 
-function Row({
-  title,
-  description,
-  children,
-  className,
-}: {
-  title: ReactNode;
-  description: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 sm:py-5",
-        className,
-      )}
-    >
-      <div>
-        <div className="text-base font-medium">{title}</div>
-        <div className="text-sm text-slate">{description}</div>
-      </div>
-      {children}
-    </div>
-  );
-}
+const sectionClass = "flex flex-col gap-4";
 
-const selectClass =
-  "h-10 rounded-lg border border-hairline bg-white px-3 text-sm font-normal text-ink";
-
-const providerLabel: Record<AIConfig["provider"], string> = {
-  anthropic: "Anthropic (Claude)",
-  openai: "OpenAI-compatible API",
-  local: "Local OpenAI-compatible server (Ollama, LM Studio, llama.cpp)",
-  off: "None",
-};
-
-/** Origin and path only, so credentials or query strings never reach the page. */
-function displayEndpoint(baseURL: string) {
-  const url = new URL(baseURL);
-  return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
-}
-
-function AIProviderSkeleton() {
+/** Placeholder rows in the same card style while a section loads. */
+function SectionSkeleton({ rows }: { rows: number }) {
   return (
     <Card aria-hidden="true" className="animate-pulse">
-      {Array.from({ length: 5 }, (_, i) => (
+      {Array.from({ length: rows }, (_, i) => (
         <div
           key={i}
           className="flex flex-wrap items-center justify-between gap-4 border-b border-divider px-4 py-4 last:border-b-0 sm:px-6 sm:py-5"
@@ -71,21 +44,139 @@ function AIProviderSkeleton() {
   );
 }
 
-async function AIProviderDetails() {
-  await connection();
+/** "A", "A and B", "A, B and C". */
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
 
-  let config: AIConfig;
-  let local: boolean;
-  try {
-    config = readAIConfig();
-    local = isLocal(config);
-  } catch {
+const providerLabel = {
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI-compatible API",
+  local: "Local OpenAI-compatible server (Ollama, LM Studio, llama.cpp)",
+  off: "None",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+
+async function ProfileSection() {
+  const { user } = await requireUser();
+  return (
+    <ProfileForm name={user.name} email={user.email} memberSince={formatDate(user.createdAt)} />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Security
+// ---------------------------------------------------------------------------
+
+function sessionDescription(sessions: SessionView[]): string {
+  const others = sessions.filter((s) => !s.current);
+  if (others.length === 0) return "This browser only";
+  const parts = sessions.map((s) => (s.current ? "this browser" : s.label));
+  return `${sessions.length} devices · ${joinList(parts)}`;
+}
+
+async function SecuritySection() {
+  const { user, session } = await requireUser();
+  const sessions = listSessionViews(user.id, session.id);
+  const otherCount = sessions.filter((s) => !s.current).length;
+
+  return (
+    <Card>
+      <TwoFactorSetup enabled={user.totpEnabled} />
+      <PasswordSection
+        hasPassword={user.hasPassword}
+        changedLabel={passwordChangedLabel(user.passwordChangedAt)}
+      />
+      <Row title="Active sessions" description={sessionDescription(sessions)}>
+        <form action={signOutOthersAction}>
+          <Button type="submit" variant="secondary" size="md" disabled={otherCount === 0}>
+            Sign out others
+          </Button>
+        </form>
+      </Row>
+      <ul aria-label="Signed-in devices" className="divide-y divide-divider">
+        {sessions.map((s) => (
+          <li
+            key={s.id}
+            className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                <span className="break-words">{s.label}</span>
+                {s.current && <StatusBadge status="ready">This browser</StatusBadge>}
+              </div>
+              <div className="text-[13px] text-slate">
+                {s.current ? "Active now" : `Last active ${s.lastActive}`}
+              </div>
+            </div>
+            {!s.current && <RevokeSessionButton sessionId={s.id} />}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Privacy & data
+// ---------------------------------------------------------------------------
+
+async function PrivacySection() {
+  const { user } = await requireUser();
+  const settings = getPrivacySettings(user.id);
+
+  return (
+    <>
+      <Card>
+        <PrivacySelect
+          name="retentionHours"
+          title="Keep files for"
+          description="Uploads and cleaned files are deleted after this. Applies to files uploaded from now on."
+          defaultValue={String(settings.retentionHours)}
+          options={RETENTION_HOURS.map((h) => ({ value: String(h), label: RETENTION_LABELS[h] }))}
+        />
+        <PrivacySelect
+          name="defaultMode"
+          title="Default cleaning mode"
+          description="AI only sees column names, statistics and a 20-row sample."
+          defaultValue={settings.defaultMode}
+          options={CLEANING_MODES.map((m) => ({ value: m, label: CLEANING_MODE_LABELS[m] }))}
+          ariaLabel="Default cleaning mode"
+        />
+        <Row
+          title="Export my data"
+          description="Account info, rules, file and change history, and audit entries. Passwords and API keys are left out."
+        >
+          <a
+            href="/api/account/export"
+            download
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-hairline bg-transparent px-5 py-2.5 text-sm font-medium text-ink no-underline transition-colors"
+          >
+            Download JSON
+          </a>
+        </Row>
+      </Card>
+
+      <DeleteAccount email={user.email} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI provider
+// ---------------------------------------------------------------------------
+
+function InstanceRows({ instance }: { instance: InstanceAIView | null }) {
+  if (!instance) {
     return (
       <Card>
         <Row
-          className="border-b border-divider last:border-b-0"
           title="Mode"
-          description="AI settings could not be read. Check AI_PROVIDER, AI_MODEL and AI_BASE_URL in .env.local."
+          description="The instance AI settings could not be read. The administrator should check AI_PROVIDER, AI_MODEL and AI_BASE_URL."
         >
           <StatusBadge status="failed">Misconfigured</StatusBadge>
         </Row>
@@ -93,75 +184,83 @@ async function AIProviderDetails() {
     );
   }
 
-  const off = config.provider === "off";
-  const modeLabel = off ? "Off" : config.provider === "local" ? "Local model" : "Your API key";
-  const modeBadge = off
+  const { description: d } = instance;
+  const off = d.provider === "off";
+  const badge = off
     ? { status: "deleted" as const, text: "Rules only" }
-    : local
+    : d.local
       ? { status: "ready" as const, text: "Runs on this machine" }
       : { status: "processing" as const, text: "Cloud API" };
-  const modeDescription = off
-    ? "AI is disabled. Cleaning uses rules only."
-    : local
-      ? "Requests stay on this machine."
-      : "Requests go to a hosted provider using your API key.";
-  const endpoint =
-    !off && config.provider !== "anthropic" && config.baseURL
-      ? displayEndpoint(config.baseURL)
-      : null;
 
   return (
     <Card>
       <Row
-        className="border-b border-divider last:border-b-0"
         title="Mode"
-        description={modeDescription}
+        description={
+          off
+            ? "AI is disabled for this instance. Cleaning uses rules only."
+            : d.local
+              ? "Requests stay on this machine."
+              : "Requests go to a hosted provider."
+        }
       >
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium">{modeLabel}</span>
-          <StatusBadge status={modeBadge.status}>{modeBadge.text}</StatusBadge>
+          <span className="text-sm font-medium">{off ? "Off" : "Instance model"}</span>
+          <StatusBadge status={badge.status}>{badge.text}</StatusBadge>
         </div>
       </Row>
-      <Row
-        className="border-b border-divider last:border-b-0"
-        title="Provider"
-        description="The API that serves model requests."
-      >
-        <span className="text-sm font-normal text-ink">{providerLabel[config.provider]}</span>
+      <Row title="Provider" description="The API that serves model requests.">
+        <span className="text-sm font-normal text-ink">{providerLabel[d.provider]}</span>
       </Row>
       {!off && (
-        <Row
-          className="border-b border-divider last:border-b-0"
-          title="Model"
-          description="Model id sent with each request."
-        >
-          <Mono chip>{config.model}</Mono>
+        <Row title="Model" description="Model id sent with each request.">
+          <Mono chip>{d.model}</Mono>
         </Row>
       )}
-      {endpoint && (
-        <Row
-          className="border-b border-divider last:border-b-0"
-          title="Endpoint"
-          description="Base URL that requests are sent to."
-        >
-          <Mono chip className="break-all">{endpoint}</Mono>
+      {instance.endpoint && (
+        <Row title="Endpoint" description="Base URL that requests are sent to.">
+          <Mono chip className="break-all">
+            {instance.endpoint}
+          </Mono>
         </Row>
       )}
-      <Row
-        className="border-b border-divider last:border-b-0"
-        title="Connection"
-        description="Check that the configured model responds."
-      >
-        <a
-          href="/api/ai/status"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-hairline bg-transparent px-5 py-2.5 text-sm font-medium text-ink transition-colors"
-        >
-          Test connection
-        </a>
-      </Row>
     </Card>
+  );
+}
+
+async function AIProviderSection() {
+  const { user } = await requireUser();
+  const view = getAISettingsView(user.id);
+
+  return (
+    <>
+      <InstanceRows instance={view.instance} />
+      <AIProviderForm instanceLabel={view.instance?.label ?? "unavailable"} user={view.user} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+function Section({
+  id,
+  title,
+  level = "h2",
+  children,
+}: {
+  id: string;
+  title: string;
+  level?: "h1" | "h2";
+  children: ReactNode;
+}) {
+  const Heading = level;
+  return (
+    <section id={id} className={sectionClass}>
+      <Heading className="text-[28px] font-semibold leading-[1.25]">{title}</Heading>
+      {children}
+    </section>
   );
 }
 
@@ -173,130 +272,38 @@ export default function SettingsPage() {
       <div className="mx-auto flex max-w-[1344px] flex-wrap">
         {/* Design sidebar is 240px content + 32px padding = 272px; SideNav is border-box at 240px. */}
         <div className="w-full sm:w-[272px] sm:shrink-0">
-          <SideNav
-            label="Settings"
-            active={["Security", "Privacy & data"]}
-            items={[
-              { label: "Profile", href: "/settings#profile" },
-              { label: "Security", href: "/settings#security" },
-              { label: "Privacy & data", href: "/settings#privacy" },
-              { label: "AI provider", href: "/settings#ai-provider" },
-            ]}
-          />
+          <SettingsNav />
         </div>
 
         {/* Design main is 760px content + 2 x 32px padding; preflight is border-box, so max is 824px. */}
         <main className="flex min-w-0 max-w-[824px] flex-[1_1_320px] flex-col gap-12 p-4 sm:p-8">
-          <section id="security" className="flex flex-col gap-4">
-            <h1 className="text-[28px] font-semibold leading-[1.25]">Security</h1>
-            <Card>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="Two-factor authentication"
-                description="Use an authenticator app when you sign in."
-              >
-                <StatusBadge status="ready">On</StatusBadge>
-              </Row>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="Password"
-                description="Last changed 3 months ago"
-              >
-                <Button variant="secondary" size="md">
-                  Change
-                </Button>
-              </Row>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="Active sessions"
-                description="2 devices · this browser and an iPhone"
-              >
-                <Button variant="secondary" size="md">
-                  Sign out others
-                </Button>
-              </Row>
-            </Card>
-          </section>
+          <Section id="profile" title="Profile" level="h1">
+            <Suspense fallback={<SectionSkeleton rows={3} />}>
+              <ProfileSection />
+            </Suspense>
+          </Section>
 
-          <section id="privacy" className="flex flex-col gap-4">
-            <h2 className="text-[28px] font-semibold leading-[1.25]">Privacy &amp; data</h2>
-            <Card>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title={
-                  <label htmlFor="retention" className="cursor-pointer">
-                    Keep files for
-                  </label>
-                }
-                description="Uploads and cleaned files are deleted after this."
-              >
-                <select id="retention" defaultValue="24 hours" className={selectClass}>
-                  <option>1 hour</option>
-                  <option>24 hours</option>
-                  <option>7 days</option>
-                </select>
-              </Row>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="Default cleaning mode"
-                description="AI only sees column names, statistics and a 20-row sample."
-              >
-                <select
-                  aria-label="Default cleaning mode"
-                  defaultValue="Rules + AI"
-                  className={selectClass}
-                >
-                  <option>Rules + AI</option>
-                  <option>Rules only</option>
-                </select>
-              </Row>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="AI model"
-                description="Run a local model so nothing leaves your machine, or bring your own API key."
-              >
-                <select aria-label="AI model" defaultValue="Local model" className={selectClass}>
-                  <option>Local model</option>
-                  <option>Your API key</option>
-                  <option>Off</option>
-                </select>
-              </Row>
-              <Row
-                className="border-b border-divider last:border-b-0"
-                title="Export my data"
-                description="Account info, rules and report history."
-              >
-                <Button variant="secondary" size="md">
-                  Request export
-                </Button>
-              </Row>
-            </Card>
+          <Section id="security" title="Security">
+            <Suspense fallback={<SectionSkeleton rows={3} />}>
+              <SecuritySection />
+            </Suspense>
+          </Section>
 
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-error-border bg-error-bg px-4 py-4 sm:px-6 sm:py-5">
-              <div>
-                <div className="text-base font-medium text-error-ink">
-                  Delete account and all data
-                </div>
-                <div className="text-sm text-slate">
-                  Permanently removes files, reports, rules and your account.
-                </div>
-              </div>
-              <Button variant="destructive" size="md">
-                Delete everything
-              </Button>
-            </div>
-          </section>
+          <Section id="privacy" title="Privacy & data">
+            <Suspense fallback={<SectionSkeleton rows={3} />}>
+              <PrivacySection />
+            </Suspense>
+          </Section>
 
-          <section id="ai-provider" className="flex flex-col gap-4">
-            <h2 className="text-[28px] font-semibold leading-[1.25]">AI provider</h2>
-            <Suspense fallback={<AIProviderSkeleton />}>
-              <AIProviderDetails />
+          <Section id="ai-provider" title="AI provider">
+            <Suspense fallback={<SectionSkeleton rows={4} />}>
+              <AIProviderSection />
             </Suspense>
             <p className="text-sm text-slate">
-              Set <Mono>AI_PROVIDER</Mono>, <Mono>AI_MODEL</Mono>, <Mono>AI_BASE_URL</Mono> and{" "}
-              <Mono>AI_API_KEY</Mono> in <Mono>.env.local</Mono>. See <Mono>.env.example</Mono>.
+              The instance model is set by the administrator through <Mono>AI_PROVIDER</Mono> and related
+              variables, or in the admin console. Your own key is used only for your files.
             </p>
-          </section>
+          </Section>
         </main>
       </div>
     </>

@@ -1,0 +1,325 @@
+/**
+ * ISO 3166-1 countries: alpha-2 and alpha-3 codes mapped to English short names.
+ * Names are plain ASCII common forms, so typo matching works on what people type.
+ */
+
+import { editDistance } from "./text";
+
+const TABLE = `AD AND Andorra
+AE ARE United Arab Emirates
+AF AFG Afghanistan
+AG ATG Antigua and Barbuda
+AI AIA Anguilla
+AL ALB Albania
+AM ARM Armenia
+AO AGO Angola
+AQ ATA Antarctica
+AR ARG Argentina
+AS ASM American Samoa
+AT AUT Austria
+AU AUS Australia
+AW ABW Aruba
+AX ALA Aland Islands
+AZ AZE Azerbaijan
+BA BIH Bosnia and Herzegovina
+BB BRB Barbados
+BD BGD Bangladesh
+BE BEL Belgium
+BF BFA Burkina Faso
+BG BGR Bulgaria
+BH BHR Bahrain
+BI BDI Burundi
+BJ BEN Benin
+BL BLM Saint Barthelemy
+BM BMU Bermuda
+BN BRN Brunei
+BO BOL Bolivia
+BQ BES Caribbean Netherlands
+BR BRA Brazil
+BS BHS Bahamas
+BT BTN Bhutan
+BV BVT Bouvet Island
+BW BWA Botswana
+BY BLR Belarus
+BZ BLZ Belize
+CA CAN Canada
+CC CCK Cocos (Keeling) Islands
+CD COD Democratic Republic of the Congo
+CF CAF Central African Republic
+CG COG Congo
+CH CHE Switzerland
+CI CIV Ivory Coast
+CK COK Cook Islands
+CL CHL Chile
+CM CMR Cameroon
+CN CHN China
+CO COL Colombia
+CR CRI Costa Rica
+CU CUB Cuba
+CV CPV Cape Verde
+CW CUW Curacao
+CX CXR Christmas Island
+CY CYP Cyprus
+CZ CZE Czech Republic
+DE DEU Germany
+DJ DJI Djibouti
+DK DNK Denmark
+DM DMA Dominica
+DO DOM Dominican Republic
+DZ DZA Algeria
+EC ECU Ecuador
+EE EST Estonia
+EG EGY Egypt
+EH ESH Western Sahara
+ER ERI Eritrea
+ES ESP Spain
+ET ETH Ethiopia
+FI FIN Finland
+FJ FJI Fiji
+FK FLK Falkland Islands
+FM FSM Micronesia
+FO FRO Faroe Islands
+FR FRA France
+GA GAB Gabon
+GB GBR United Kingdom
+GD GRD Grenada
+GE GEO Georgia
+GF GUF French Guiana
+GG GGY Guernsey
+GH GHA Ghana
+GI GIB Gibraltar
+GL GRL Greenland
+GM GMB Gambia
+GN GIN Guinea
+GP GLP Guadeloupe
+GQ GNQ Equatorial Guinea
+GR GRC Greece
+GS SGS South Georgia and the South Sandwich Islands
+GT GTM Guatemala
+GU GUM Guam
+GW GNB Guinea-Bissau
+GY GUY Guyana
+HK HKG Hong Kong
+HM HMD Heard Island and McDonald Islands
+HN HND Honduras
+HR HRV Croatia
+HT HTI Haiti
+HU HUN Hungary
+ID IDN Indonesia
+IE IRL Ireland
+IL ISR Israel
+IM IMN Isle of Man
+IN IND India
+IO IOT British Indian Ocean Territory
+IQ IRQ Iraq
+IR IRN Iran
+IS ISL Iceland
+IT ITA Italy
+JE JEY Jersey
+JM JAM Jamaica
+JO JOR Jordan
+JP JPN Japan
+KE KEN Kenya
+KG KGZ Kyrgyzstan
+KH KHM Cambodia
+KI KIR Kiribati
+KM COM Comoros
+KN KNA Saint Kitts and Nevis
+KP PRK North Korea
+KR KOR South Korea
+KW KWT Kuwait
+KY CYM Cayman Islands
+KZ KAZ Kazakhstan
+LA LAO Laos
+LB LBN Lebanon
+LC LCA Saint Lucia
+LI LIE Liechtenstein
+LK LKA Sri Lanka
+LR LBR Liberia
+LS LSO Lesotho
+LT LTU Lithuania
+LU LUX Luxembourg
+LV LVA Latvia
+LY LBY Libya
+MA MAR Morocco
+MC MCO Monaco
+MD MDA Moldova
+ME MNE Montenegro
+MF MAF Saint Martin
+MG MDG Madagascar
+MH MHL Marshall Islands
+MK MKD North Macedonia
+ML MLI Mali
+MM MMR Myanmar
+MN MNG Mongolia
+MO MAC Macao
+MP MNP Northern Mariana Islands
+MQ MTQ Martinique
+MR MRT Mauritania
+MS MSR Montserrat
+MT MLT Malta
+MU MUS Mauritius
+MV MDV Maldives
+MW MWI Malawi
+MX MEX Mexico
+MY MYS Malaysia
+MZ MOZ Mozambique
+NA NAM Namibia
+NC NCL New Caledonia
+NE NER Niger
+NF NFK Norfolk Island
+NG NGA Nigeria
+NI NIC Nicaragua
+NL NLD Netherlands
+NO NOR Norway
+NP NPL Nepal
+NR NRU Nauru
+NU NIU Niue
+NZ NZL New Zealand
+OM OMN Oman
+PA PAN Panama
+PE PER Peru
+PF PYF French Polynesia
+PG PNG Papua New Guinea
+PH PHL Philippines
+PK PAK Pakistan
+PL POL Poland
+PM SPM Saint Pierre and Miquelon
+PN PCN Pitcairn Islands
+PR PRI Puerto Rico
+PS PSE Palestine
+PT PRT Portugal
+PW PLW Palau
+PY PRY Paraguay
+QA QAT Qatar
+RE REU Reunion
+RO ROU Romania
+RS SRB Serbia
+RU RUS Russia
+RW RWA Rwanda
+SA SAU Saudi Arabia
+SB SLB Solomon Islands
+SC SYC Seychelles
+SD SDN Sudan
+SE SWE Sweden
+SG SGP Singapore
+SH SHN Saint Helena
+SI SVN Slovenia
+SJ SJM Svalbard and Jan Mayen
+SK SVK Slovakia
+SL SLE Sierra Leone
+SM SMR San Marino
+SN SEN Senegal
+SO SOM Somalia
+SR SUR Suriname
+SS SSD South Sudan
+ST STP Sao Tome and Principe
+SV SLV El Salvador
+SX SXM Sint Maarten
+SY SYR Syria
+SZ SWZ Eswatini
+TC TCA Turks and Caicos Islands
+TD TCD Chad
+TF ATF French Southern Territories
+TG TGO Togo
+TH THA Thailand
+TJ TJK Tajikistan
+TK TKL Tokelau
+TL TLS East Timor
+TM TKM Turkmenistan
+TN TUN Tunisia
+TO TON Tonga
+TR TUR Turkey
+TT TTO Trinidad and Tobago
+TV TUV Tuvalu
+TW TWN Taiwan
+TZ TZA Tanzania
+UA UKR Ukraine
+UG UGA Uganda
+UM UMI United States Minor Outlying Islands
+US USA United States
+UY URY Uruguay
+UZ UZB Uzbekistan
+VA VAT Vatican City
+VC VCT Saint Vincent and the Grenadines
+VE VEN Venezuela
+VG VGB British Virgin Islands
+VI VIR U.S. Virgin Islands
+VN VNM Vietnam
+VU VUT Vanuatu
+WF WLF Wallis and Futuna
+WS WSM Samoa
+YE YEM Yemen
+YT MYT Mayotte
+ZA ZAF South Africa
+ZM ZMB Zambia
+ZW ZWE Zimbabwe`;
+
+/** Common non-ISO spellings people type for a country. */
+const ALIASES: readonly [string, string][] = [
+  ["UK", "United Kingdom"],
+  ["UAE", "United Arab Emirates"],
+];
+
+/** Uppercase code (alpha-2, alpha-3 or alias) -> English name. */
+const NAME_BY_CODE = new Map<string, string>();
+/** Lowercase English name -> canonical name. */
+const NAME_BY_LOWER = new Map<string, string>();
+const NAMES: string[] = [];
+
+for (const line of TABLE.split("\n")) {
+  const parts = line.trim().split(/\s+/);
+  const alpha2 = parts[0];
+  const alpha3 = parts[1];
+  const name = parts.slice(2).join(" ");
+  NAME_BY_CODE.set(alpha2, name);
+  NAME_BY_CODE.set(alpha3, name);
+  NAME_BY_LOWER.set(name.toLowerCase(), name);
+  NAMES.push(name);
+}
+for (const [code, name] of ALIASES) {
+  NAME_BY_CODE.set(code, name);
+}
+
+/** Shortest accepted fuzzy-match input. Shorter values are too easy to mis-snap. */
+const MIN_FUZZY_LENGTH = 5;
+
+/** English name for an ISO alpha-2/alpha-3 code (or alias), any case. Null if not a code. */
+export function countryFromCode(value: string): string | null {
+  const t = value.trim().toUpperCase();
+  if (t.length !== 2 && t.length !== 3) return null;
+  if (!/^[A-Z]+$/.test(t)) return null;
+  return NAME_BY_CODE.get(t) ?? null;
+}
+
+/** Canonical English name for a country name typed in another case or spacing. Null if unknown. */
+export function canonicalCountryName(value: string): string | null {
+  return NAME_BY_LOWER.get(value.trim().toLowerCase()) ?? null;
+}
+
+/**
+ * The single country name within `maxDistance` edits of `value` (case-insensitive).
+ * Null when nothing is that close, when several names tie, or when the value is too short.
+ */
+export function nearestCountryName(value: string, maxDistance: number): { name: string; distance: number } | null {
+  const t = value.trim().toLowerCase();
+  if (t.length < MIN_FUZZY_LENGTH) return null;
+  let best: string | null = null;
+  let bestDistance = maxDistance + 1;
+  let tie = false;
+  for (const name of NAMES) {
+    const lower = name.toLowerCase();
+    if (Math.abs(lower.length - t.length) > maxDistance) continue;
+    const d = editDistance(t, lower, maxDistance);
+    if (d > maxDistance) continue;
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = name;
+      tie = false;
+    } else if (d === bestDistance) {
+      tie = true;
+    }
+  }
+  if (best === null || tie) return null;
+  return { name: best, distance: bestDistance };
+}

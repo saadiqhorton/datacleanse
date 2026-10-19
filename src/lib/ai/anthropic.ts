@@ -3,9 +3,25 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
 import { AIError, type AIProvider, type GenerateObjectRequest } from "./types";
 
-export function createAnthropicProvider(model: string): AIProvider {
-  // Resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
-  const client = new Anthropic();
+export interface AnthropicProviderOptions {
+  model: string;
+  /** Explicit key (e.g. a user's own key or an admin-set key). Omit to use the env/profile default. */
+  apiKey?: string;
+  /** Custom Anthropic-compatible endpoint. Omit for api.anthropic.com. */
+  baseURL?: string;
+}
+
+/**
+ * Accepts a bare model id (the original signature) or explicit options.
+ * Without an apiKey the SDK resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+ */
+export function createAnthropicProvider(options: string | AnthropicProviderOptions): AIProvider {
+  const { model, apiKey, baseURL } =
+    typeof options === "string" ? { model: options, apiKey: undefined, baseURL: undefined } : options;
+  const client = new Anthropic({
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseURL ? { baseURL } : {}),
+  });
 
   return {
     id: "anthropic",

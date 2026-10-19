@@ -13,7 +13,7 @@ export function getAIProvider(config: AIConfig = readAIConfig()): AIProvider | n
     case "off":
       return null;
     case "anthropic":
-      return createAnthropicProvider(config.model);
+      return createAnthropicProvider({ model: config.model, apiKey: config.apiKey, baseURL: config.baseURL });
     case "openai":
     case "local":
       return createOpenAICompatibleProvider(config);

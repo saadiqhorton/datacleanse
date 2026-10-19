@@ -28,7 +28,7 @@ export const DEFAULT_MODELS: Record<Exclude<ProviderId, "off">, string> = {
   local: "llama3.1",
 };
 
-const DEFAULT_BASE_URLS = {
+export const DEFAULT_BASE_URLS = {
   openai: "https://api.openai.com/v1",
   // Ollama's OpenAI-compatible endpoint. LM Studio uses http://localhost:1234/v1.
   local: "http://localhost:11434/v1",

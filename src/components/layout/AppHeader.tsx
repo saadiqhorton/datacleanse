@@ -1,5 +1,7 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { getSession } from "@/server/auth/session";
+import { AccountMenu } from "./AccountMenu";
 import { cn } from "../ui/cn";
 import { Logo } from "./Logo";
 
@@ -71,23 +73,31 @@ export function AppHeader({
   );
 }
 
-export function AccountButton({
-  initials = "MR",
-  active,
-}: {
-  initials?: string;
-  active?: boolean;
-}) {
+/** Signed-in user's avatar + menu. Reads the session, so it streams in behind Suspense. */
+export function AccountButton({ active }: { active?: boolean }) {
   return (
-    <Link
-      href="/settings"
-      aria-label="Account menu"
-      className={cn(
-        "inline-flex size-10 items-center justify-center rounded-full bg-surface text-[13px] font-semibold no-underline",
-        active ? "border-2 border-ink" : "border border-hairline",
-      )}
-    >
-      {initials}
-    </Link>
+    <Suspense fallback={<span className="inline-block size-10 rounded-full border border-hairline bg-surface" />}>
+      <AccountButtonInner active={active} />
+    </Suspense>
   );
+}
+
+async function AccountButtonInner({ active }: { active?: boolean }) {
+  const current = await getSession();
+  if (!current) return null;
+  const { user } = current;
+  return (
+    <AccountMenu
+      active={active}
+      name={user.name}
+      email={user.email}
+      initials={initialsOf(user.name || user.email)}
+      isAdmin={user.role === "admin"}
+    />
+  );
+}
+
+function initialsOf(nameOrEmail: string) {
+  const words = nameOrEmail.split("@")[0].split(/[\s._-]+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
 }
