@@ -1,0 +1,7 @@
+customer_id,name,email,phone,signup_date,country,company
+1,Jane Ortiz,jane@acme.io,(555) 010-0142,2022-03-04,Germany,Acme Corp
+2,J. Ortiz,JANE@acme.io,555-010-0142,03/04/22,Gemany,  acme corp. 
+3,  lee park,lee@park.kr,,4 Mar 2022,KR,park & co
+4,Ana Silva,ana@initech.co,+44 20 7946 0958,12/25/2021,PT,initech
+5,Omar Haddad,omar@globex.com,5550100199,25/12/2021,US,GLOBEX
+6,Ana Silva,ana@initech.co,+44 20 7946 0958,12/25/2021,PT,initech
