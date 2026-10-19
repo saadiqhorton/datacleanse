@@ -64,13 +64,19 @@ export function isApplied(c: ProposedChange): boolean {
   return c.decision === "approved" && isEdit(c);
 }
 
-/** The built-in action behind a change, from its ruleId: "trim_whitespace", or "trim_whitespace_2" for a saved rule. */
+/**
+ * The action behind a change, from its ruleId. Accepts "trim_whitespace", "trim_whitespace_2",
+ * built-ins like "builtin:normalize_date:signup_date" and saved rules like "phone_e164:rule_x".
+ */
 function actionOf(ruleId: string): RuleAction | "ai" | null {
   if (ruleId === "ai") return "ai";
   let found: RuleAction | null = null;
-  for (const action of RULE_ACTIONS) {
-    const matches = ruleId === action || ruleId.startsWith(`${action}_`);
-    if (matches && (found === null || action.length > found.length)) found = action;
+  for (const segment of ruleId.split(":")) {
+    for (const action of RULE_ACTIONS) {
+      const matches = segment === action || segment.startsWith(`${action}_`);
+      if (matches && (found === null || action.length > found.length)) found = action;
+    }
+    if (found) return found;
   }
   return found;
 }

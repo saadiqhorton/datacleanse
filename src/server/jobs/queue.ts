@@ -46,16 +46,32 @@ export function enqueueJob(
 }
 
 export function cancelJob(jobId: string) {
-  db()
-    .prepare("UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE id = ? AND status IN ('queued','running')")
-    .run(Date.now(), jobId);
+  const conn = db();
+  conn.transaction(() => {
+    const res = conn
+      .prepare("UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE id = ? AND status IN ('queued','running')")
+      .run(Date.now(), jobId);
+    if (res.changes === 0) return;
+    // A file waiting on this job would otherwise stay "processing".
+    conn
+      .prepare(
+        `UPDATE files SET status = 'failed', error = 'Cancelled'
+         WHERE status = 'processing' AND id = (SELECT file_id FROM jobs WHERE id = ? AND type = 'clean')`,
+      )
+      .run(jobId);
+  })();
 }
 
 /** Call once at server start (instrumentation.ts). Interrupted jobs are re-queued. */
 export function startJobRunner() {
   if (state.started) return;
   state.started = true;
-  db().prepare("UPDATE jobs SET status = 'queued', step = '', progress = 0 WHERE status = 'running'").run();
+  const conn = db();
+  // Clean jobs resume from the start; inline Ask/Compare jobs can't be resumed.
+  conn.prepare("UPDATE jobs SET status = 'queued', step = '', progress = 0 WHERE status = 'running' AND type = 'clean'").run();
+  conn
+    .prepare("UPDATE jobs SET status = 'failed', error = 'Interrupted by a server restart', finished_at = ? WHERE status IN ('running','queued') AND type != 'clean'")
+    .run(Date.now());
   setInterval(pump, 2000).unref();
   setImmediate(pump);
 }
