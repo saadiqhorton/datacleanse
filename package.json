@@ -7,18 +7,28 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:ai": "tsx --test scripts/smoke-ai.ts"
+    "test:ai": "tsx --test scripts/smoke-ai.ts",
+    "test": "tsx --test \"src/**/*.test.ts\" scripts/smoke-ai.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@duckdb/node-api": "^1.5.6-r.1",
+    "better-sqlite3": "^13.0.3",
     "next": "16.4.2",
+    "nodemailer": "^10.1.7",
+    "otpauth": "^9.5.2",
+    "papaparse": "^5.7.0",
+    "pdf-lib": "^1.17.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
