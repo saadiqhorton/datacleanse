@@ -72,14 +72,20 @@ function authOptions(conn: DB) {
 
 type Auth = ReturnType<typeof betterAuth<ReturnType<typeof authOptions>>>;
 
-const g = globalThis as unknown as { __dcAuth?: { conn: DB; auth: Auth; ready: Promise<void> } };
+const g = globalThis as unknown as { __dcAuth?: { conn: DB; auth?: Auth; ready: Promise<void> } };
 
-/** The Better Auth instance bound to the current database (tests swap the database). */
+/**
+ * The Better Auth instance bound to the current database (tests swap the database).
+ * Call `await authReady()` first: the instance is created only once its tables exist, so Better Auth's
+ * schema check never sees (and caches) a database without them.
+ */
 export function getAuth(): Auth {
-  return state().auth;
+  const { auth } = state();
+  if (!auth) throw new Error("Better Auth is not ready yet: await authReady() before getAuth().");
+  return auth;
 }
 
-/** Creates Better Auth's tables on first use. Await before handling auth requests. */
+/** Creates Better Auth's tables (first run) and then the instance. Await before handling auth requests. */
 export function authReady(): Promise<void> {
   return state().ready;
 }
@@ -88,11 +94,13 @@ function state() {
   const conn = db();
   if (!g.__dcAuth || g.__dcAuth.conn !== conn) {
     const options = authOptions(conn);
-    g.__dcAuth = {
-      conn,
-      auth: betterAuth(options),
-      ready: getMigrations(options).then((m) => m.runMigrations()),
-    };
+    const entry: { conn: DB; auth?: Auth; ready: Promise<void> } = { conn, ready: Promise.resolve() };
+    entry.ready = getMigrations(options)
+      .then((m) => m.runMigrations())
+      .then(() => {
+        entry.auth = betterAuth(options);
+      });
+    g.__dcAuth = entry;
   }
   return g.__dcAuth;
 }

@@ -147,9 +147,9 @@ describe("changing the password", () => {
     const res = await getAuth().api.signInEmail({ body: { email: "maria@northwind.co", password: "a-new-password-1" } });
     assert.equal(res.user.email, "maria@northwind.co");
     assert.equal(await getAuth().api.getSession({ headers: other.headers }), null);
-    // Better Auth rotates the caller's session when it signs the others out, so only the new one is live.
-    assert.equal(await getAuth().api.getSession({ headers: here.headers }), null);
-    assert.equal(await liveSessionCount(maria), 2, "the new sign-in plus the one just created");
+    // This browser keeps its session; the other sessions are gone.
+    assert.ok(await getAuth().api.getSession({ headers: here.headers }));
+    assert.equal(await liveSessionCount(maria), 2, "this browser plus the sign-in made for the test");
   });
 
   it("records when the password was last changed", async () => {

@@ -120,8 +120,9 @@ export async function signOutOtherSessions(
 }
 
 /**
- * Changes the password after checking the current one. Better Auth signs out the other sessions and
- * rotates this browser's session cookie, so the caller stays signed in.
+ * Changes the password after checking the current one, then signs out the other sessions. This browser keeps
+ * its session: Better Auth's revokeOtherSessions option would rotate the cookie, and the page this action
+ * re-renders would still read the old one and redirect to sign-in.
  */
 export async function changeOwnPassword(
   userId: string,
@@ -132,9 +133,10 @@ export async function changeOwnPassword(
   await authReady();
   try {
     await getAuth().api.changePassword({
-      body: { currentPassword, newPassword, revokeOtherSessions: true },
+      body: { currentPassword, newPassword, revokeOtherSessions: false },
       headers,
     });
+    await getAuth().api.revokeOtherSessions({ headers });
   } catch (err) {
     switch (apiErrorCode(err)) {
       case "INVALID_PASSWORD":

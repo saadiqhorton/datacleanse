@@ -144,8 +144,9 @@ test("owner signs up on a fresh instance, then sign-up closes", async ({ page, b
       await expect(page.getByRole("heading", { name: "Sign-ups are closed" })).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Your name" })).toHaveCount(0);
 
+      await gotoForm(page, `${app.url}/signin`, "Work email");
       await signIn(page, OWNER.email, OWNER.password);
-      await expect(page).toHaveURL(/\/settings$/);
+      await expect(page).toHaveURL(/\/files$/);
       await open(page, `${app.url}/admin/users`);
       await expect(page.getByText(/Single-user instance\. Sign-ups are closed/)).toBeVisible();
     });
@@ -201,7 +202,10 @@ test("owner signs up on a fresh instance, then sign-up closes", async ({ page, b
       await page.getByRole("button", { name: "Change password" }).click();
       await expect(page.getByRole("alert").filter({ hasText: "Current password is incorrect." })).toBeVisible();
 
+      // A failed submit resets the form, so every field is filled again for the right attempt.
       await page.getByLabel("Current password", { exact: true }).fill(OWNER_AFTER_RESET);
+      await page.getByLabel(/^New password/).fill(OWNER_CHANGED);
+      await page.getByLabel(/^Confirm new password/).fill(OWNER_CHANGED);
       await page.getByRole("button", { name: "Change password" }).click();
       await expect(page.getByRole("status").filter({ hasText: "Password changed. Other sessions were signed out." })).toBeVisible();
       await open(page, `${app.url}/settings`);
@@ -335,7 +339,7 @@ test("admin and non-admin journeys on an instance that allows sign-ups", async (
       await page.getByLabel("Action starts with").fill("auth.");
       await page.getByRole("button", { name: "Search", exact: true }).click();
       const entries = page.getByRole("table", { name: "Audit log entries" });
-      await expect(entries.getByText("auth.signed_in", { exact: true }).first()).toBeVisible();
+      await expect(entries.getByText("auth.signed_up", { exact: true }).first()).toBeVisible();
       await expect(entries.getByText("auth.sign_in_failed", { exact: true }).first()).toBeVisible();
 
       await page.getByLabel("Action starts with").fill("");
