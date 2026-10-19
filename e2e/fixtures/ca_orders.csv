@@ -1,0 +1,11 @@
+id,customer_email,amount,order_date
+1,ann@acme.io,120.00,2026-09-03
+2,ben@acme.io,45.50,2026-09-05
+3,cara@acme.io,300.00,2026-09-12
+4,dan@acme.io,980.25,2026-09-14
+5,eve@acme.io,75.00,2026-09-18
+6,ann@acme.io,60.00,2026-09-22
+7,gia@acme.io,210.10,2026-09-25
+8,ivy@acme.io,33.00,2026-10-01
+9,kim@acme.io,150.00,2026-10-03
+10,lou@acme.io,88.80,2026-10-07

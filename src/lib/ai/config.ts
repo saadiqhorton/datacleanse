@@ -2,7 +2,7 @@
  * AI provider configuration, read from environment variables on the server.
  *
  *   AI_PROVIDER   anthropic | openai | local | off
- *                 Defaults to "anthropic" when ANTHROPIC_API_KEY is set, else "local".
+ *                 Defaults to "anthropic" when ANTHROPIC_API_KEY is set, "local" when AI_BASE_URL is set, else "off".
  *   AI_MODEL      Model id. Defaults per provider (see DEFAULT_MODELS).
  *   AI_BASE_URL   OpenAI-compatible base URL (".../v1"). Used by "openai" and "local".
  *   AI_API_KEY    Key for the OpenAI-compatible endpoint. Optional for "local".
@@ -41,7 +41,9 @@ export function readAIConfig(env: NodeJS.ProcessEnv = process.env): AIConfig {
   if (raw && !PROVIDERS.includes(raw as ProviderId)) {
     throw new Error(`AI_PROVIDER must be one of ${PROVIDERS.join(", ")}; got "${raw}"`);
   }
-  const provider = (raw as ProviderId | undefined) ?? (env.ANTHROPIC_API_KEY ? "anthropic" : "local");
+  // Unconfigured installs run rules-only rather than failing against a local server that isn't running.
+  const provider =
+    (raw as ProviderId | undefined) ?? (env.ANTHROPIC_API_KEY ? "anthropic" : env.AI_BASE_URL ? "local" : "off");
 
   if (provider === "off") return { provider, model: "" };
   if (provider === "anthropic") {
@@ -57,8 +59,17 @@ export function readAIConfig(env: NodeJS.ProcessEnv = process.env): AIConfig {
 
 /** Whether data sent to the model leaves this machine. Shown in the UI. */
 export function isLocal(config: AIConfig) {
-  if (config.provider === "local") return true;
   if (!config.baseURL) return false;
   const host = new URL(config.baseURL).hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "[::1]" ||
+    /^127\./.test(host) ||
+    // Private networks: a model server on the LAN (e.g. a GPU box) still keeps data in-house.
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    host === "host.docker.internal"
+  );
 }

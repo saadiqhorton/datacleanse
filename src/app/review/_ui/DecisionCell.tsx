@@ -21,7 +21,6 @@ export function DecisionCell({
   fileId,
   changeId,
   label,
-  source,
   decision,
   readOnly,
 }: {
@@ -29,7 +28,6 @@ export function DecisionCell({
   changeId: number;
   /** Row and column, used in accessible names. */
   label: string;
-  source: "rule" | "ai";
   decision: Decision;
   readOnly: boolean;
 }) {
@@ -76,12 +74,12 @@ export function DecisionCell({
   }
 
   if (shown === "skipped") {
-    // The server only lets an AI change come back. A skipped rule change stays skipped.
+    // Rule and AI changes alike can be restored, the same as Undo on an approved change.
     return (
       <div className="flex flex-col items-start gap-1">
         <span className="inline-flex items-center gap-2 text-muted">
           Skipped
-          {!readOnly && source === "ai" && (
+          {!readOnly && (
             <button
               type="button"
               disabled={busy}

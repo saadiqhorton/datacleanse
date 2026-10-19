@@ -31,6 +31,11 @@ const POOL_LIMIT = 5_000;
 /** A value with a time of day is left alone by normalize_date, so no data is lost. */
 const TIME_RE = /\d[T ]\d{1,2}:\d{2}/;
 const MIN_TYPO_LENGTH = 4;
+/** A value that reads only in the other day/month order is proposed at this confidence. */
+const OTHER_ORDER_CONFIDENCE = 0.6;
+const OTHER_ORDER_LABEL = "Day/month order differs from the rest of the column";
+/** A column at least this percent dates (of its non-empty values) has its non-date values flagged. */
+const DATE_COLUMN_PERCENT = 80;
 
 interface StepResult {
   value: string;
@@ -49,12 +54,23 @@ interface Outcome {
   confidence: number;
   decision: Decision;
 }
+interface DateFlag {
+  rule: RuleSpec;
+  /** Distinct non-empty values that parse as no date in either order. */
+  notDates: Set<string>;
+}
 interface ColumnPlan {
   steps: Step[];
   flag: RuleSpec | null;
+  /** Set when the column is mostly dates: its non-date values are flagged for review. */
+  dateFlag: DateFlag | null;
   /** Cache outcomes per distinct value only when some step is costly enough to repay the lookup. */
   cacheable: boolean;
   cache: Map<string, Outcome | null>;
+}
+interface DateColumn {
+  run: StepFn | null;
+  notDates: Set<string> | null;
 }
 
 const COSTLY_ACTIONS = new Set<string>([
@@ -158,8 +174,6 @@ function compileStep(rule: RuleSpec, c: number, columns: ColumnValues): StepFn |
         const t = v.toLowerCase();
         return t === v ? null : { value: t, label: "lowercase", confidence: 1 };
       };
-    case "normalize_date":
-      return dateStep(p, columns.values(c));
     case "phone_e164": {
       const country = typeof p.defaultCountry === "string" ? p.defaultCountry : "US";
       return (v) => {
@@ -180,9 +194,11 @@ function compileStep(rule: RuleSpec, c: number, columns: ColumnValues): StepFn |
 
 /**
  * normalize_date for one column. The order is detected from the column when "auto";
- * the reason states how many values share the dominant layout.
+ * the reason states how many values share the dominant layout. A value that reads only
+ * in the other order is still converted, at low confidence. When the column is mostly
+ * dates, its non-date values are returned as `notDates` so they can be flagged.
  */
-function dateStep(p: Record<string, unknown>, values: string[]): StepFn | null {
+function dateStep(p: Record<string, unknown>, values: string[]): DateColumn {
   const requested = p.order === "mdy" || p.order === "dmy" ? p.order : "auto";
   let order: DateOrder;
   let detected = 1;
@@ -193,36 +209,60 @@ function dateStep(p: Record<string, unknown>, values: string[]): StepFn | null {
   } else {
     order = requested;
   }
+  const other: DateOrder = order === "mdy" ? "dmy" : "mdy";
 
   const layouts = new Map<string, number>();
-  let parsed = 0;
+  let parsed = 0; // reads in the column's order
+  let dates = 0; // reads in either order
+  let nonEmpty = 0; // not blank and not time-stamped (those are left alone)
   for (const v of values) {
-    if (v === "" || TIME_RE.test(v)) continue;
+    if (v.trim() === "" || TIME_RE.test(v)) continue;
+    nonEmpty++;
     const d = parseDate(v, order);
-    if (d === null) continue;
-    parsed++;
-    layouts.set(d.layout, (layouts.get(d.layout) ?? 0) + 1);
-  }
-  if (parsed === 0) return null;
-
-  let layout = "";
-  let best = -1;
-  for (const [name, n] of layouts) {
-    if (n > best || (n === best && name < layout)) {
-      best = n;
-      layout = name;
+    if (d !== null) {
+      parsed++;
+      dates++;
+      layouts.set(d.layout, (layouts.get(d.layout) ?? 0) + 1);
+    } else if (parseDate(v, other) !== null) {
+      dates++;
     }
   }
-  const label = `Column is ${Math.round((best / parsed) * 100)}% ${layout}`;
 
-  return (v) => {
+  let label = "";
+  if (parsed > 0) {
+    let layout = "";
+    let best = -1;
+    for (const [name, n] of layouts) {
+      if (n > best || (n === best && name < layout)) {
+        best = n;
+        layout = name;
+      }
+    }
+    label = `Column is ${Math.round((best / parsed) * 100)}% ${layout}`;
+  }
+
+  const run: StepFn | null = dates === 0 ? null : (v) => {
     if (TIME_RE.test(v)) return null;
     const d = parseDate(v, order);
-    if (d === null) return null;
-    const iso = toIsoDate(d.parts);
-    if (iso === v) return null;
-    return { value: iso, label, confidence: d.ambiguous && requested === "auto" ? detected : 1 };
+    if (d !== null) {
+      const iso = toIsoDate(d.parts);
+      if (iso === v) return null;
+      return { value: iso, label, confidence: d.ambiguous && requested === "auto" ? detected : 1 };
+    }
+    const swapped = parseDate(v, other);
+    if (swapped === null) return null;
+    return { value: toIsoDate(swapped.parts), label: OTHER_ORDER_LABEL, confidence: OTHER_ORDER_CONFIDENCE };
   };
+
+  let notDates: Set<string> | null = null;
+  if (nonEmpty > 0 && dates * 100 >= nonEmpty * DATE_COLUMN_PERCENT) {
+    notDates = new Set<string>();
+    for (const v of values) {
+      if (v.trim() === "" || TIME_RE.test(v)) continue;
+      if (parseDate(v, order) === null && parseDate(v, other) === null) notDates.add(v);
+    }
+  }
+  return { run, notDates };
 }
 
 function countryStep(p: Record<string, unknown>): StepFn {
@@ -525,15 +565,22 @@ export function proposeChanges(table: Table, rules: RuleSpec[]): ProposedChange[
 
   const plans = headers.map((header, c): ColumnPlan | null => {
     const steps: Step[] = [];
+    let dateFlag: DateFlag | null = null;
     for (const rule of valueRules) {
       if (!globMatch(rule.columnPattern, header)) continue;
+      if (rule.action === "normalize_date") {
+        const date = dateStep(rule.params ?? {}, columns.values(c));
+        if (date.run !== null) steps.push({ rule, run: date.run });
+        if (dateFlag === null && date.notDates !== null) dateFlag = { rule, notDates: date.notDates };
+        continue;
+      }
       const run = compileStep(rule, c, columns);
       if (run !== null) steps.push({ rule, run });
     }
     const flag = flagRules.find((r) => globMatch(r.columnPattern, header)) ?? null;
-    if (steps.length === 0 && flag === null) return null;
+    if (steps.length === 0 && flag === null && dateFlag === null) return null;
     const cacheable = steps.some((s) => COSTLY_ACTIONS.has(s.rule.action));
-    return { steps, flag, cacheable, cache: new Map<string, Outcome | null>() };
+    return { steps, flag, dateFlag, cacheable, cache: new Map<string, Outcome | null>() };
   });
 
   // Cleaned rows, used by the dedupe pass. Only built when a dedupe rule is enabled.
@@ -570,6 +617,20 @@ export function proposeChanges(table: Table, rules: RuleSpec[]): ProposedChange[
           reason: outcome.reason,
           confidence: outcome.confidence,
           decision: outcome.decision,
+        });
+      }
+      if (plan.dateFlag !== null && plan.dateFlag.notDates.has(before)) {
+        valueChanges.push({
+          rowIndex: r,
+          column: headers[c],
+          kind: "flag",
+          before,
+          after: null,
+          source: "rule",
+          ruleId: plan.dateFlag.rule.id,
+          reason: "Not a recognisable date",
+          confidence: 1,
+          decision: "approved",
         });
       }
       if (plan.flag !== null && after.trim() === "") {

@@ -16,8 +16,8 @@ beforeEach(() => {
 describe("AI configuration view", () => {
   it("shows the environment as the default until something is saved here", () => {
     const view = getAIAdminView(env({}));
-    assert.equal(view.envDefaults?.provider, "local");
-    assert.equal(view.effective?.provider, "local");
+    assert.equal(view.envDefaults?.provider, "off");
+    assert.equal(view.effective?.provider, "off");
     assert.deepEqual(view.saved, { provider: false, model: false, baseURL: false, apiKey: false });
   });
 

@@ -129,6 +129,25 @@ describe("suggestJoins", () => {
     assert.deepEqual(await suggestJoins([tables[0]]), []);
   });
 
+  test("matches <entity>_id against id when the file name has a prefix (ca_orders -> order_id)", async () => {
+    const dir3 = fs.mkdtempSync(path.join(os.tmpdir(), "dc-query-prefix-"));
+    try {
+      fs.writeFileSync(path.join(dir3, "ca_orders.csv"), "id,amount\n1,10\n2,20\n3,30\n4,40\n");
+      fs.writeFileSync(path.join(dir3, "ca_refunds.csv"), "order_id,amount\n3,9.5\n2,2.5\n99,5\n");
+      const suggestions = await suggestJoins([
+        { alias: "ca_orders", path: path.join(dir3, "ca_orders.csv") },
+        { alias: "ca_refunds", path: path.join(dir3, "ca_refunds.csv") },
+      ]);
+      const hit = suggestions.find((s) => s.left.alias === "ca_orders" && s.right.alias === "ca_refunds");
+      assert.ok(hit);
+      assert.equal(hit.left.column, "id");
+      assert.equal(hit.right.column, "order_id");
+      assert.equal(hit.matchRate, 0.5);
+    } finally {
+      fs.rmSync(dir3, { recursive: true, force: true });
+    }
+  });
+
   test("matches <table>_id against id", async () => {
     const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "dc-query-ids-"));
     try {

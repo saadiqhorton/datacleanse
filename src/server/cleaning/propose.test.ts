@@ -158,6 +158,61 @@ describe("date order and confidence", () => {
   });
 });
 
+describe("day/month fallback and non-date values", () => {
+  const OTHER = "Day/month order differs from the rest of the column";
+
+  it("mdy column: a value only valid day-first is proposed as pending at 0.6", () => {
+    const changes = defaults(tbl(["signup_date"], [["03/04/22"], ["12/25/2021"], ["25/12/2021"]]));
+    const c = find(changes, 2, "signup_date");
+    assert.equal(c.before, "25/12/2021");
+    assert.equal(c.after, "2021-12-25");
+    assert.equal(c.reason, OTHER);
+    assert.equal(c.confidence, 0.6);
+    assert.equal(c.decision, "pending");
+    assert.equal(c.ruleId, "builtin:normalize_date:signup_date");
+  });
+
+  it("dmy column: a value only valid month-first is proposed as pending at 0.6", () => {
+    const changes = defaults(tbl(["signup_date"], [["13/02/2022"], ["25/03/2022"], ["02/13/2022"]]));
+    const c = find(changes, 2, "signup_date");
+    assert.equal(c.after, "2022-02-13");
+    assert.equal(c.reason, OTHER);
+    assert.equal(c.confidence, 0.6);
+    assert.equal(c.decision, "pending");
+  });
+
+  it("'apply' approves the day/month fallback", () => {
+    const rules = [rule("normalize_date", "signup_date", { order: "auto" }, { onLowConfidence: "apply" })];
+    const changes = proposeChanges(tbl(["signup_date"], [["03/04/22"], ["12/25/2021"], ["25/12/2021"]]), rules);
+    assert.equal(find(changes, 2, "signup_date").decision, "approved");
+  });
+
+  it("'skip' emits nothing for the day/month fallback", () => {
+    const rules = [rule("normalize_date", "signup_date", { order: "auto" }, { onLowConfidence: "skip" })];
+    const changes = proposeChanges(tbl(["signup_date"], [["03/04/22"], ["12/25/2021"], ["25/12/2021"]]), rules);
+    assert.equal(changes.filter((c) => c.rowIndex === 2).length, 0);
+    assert.equal(find(changes, 1, "signup_date").after, "2021-12-25");
+  });
+
+  it("a non-date in a column that is at least 80% dates is flagged, and left unchanged", () => {
+    const rows = [["2022-03-04"], ["2022-03-05"], ["2022-03-06"], ["2022-03-07"], ["soon"], [""]];
+    const changes = defaults(tbl(["signup_date"], rows));
+    const flag = find(changes, 4, "signup_date");
+    assert.equal(flag.kind, "flag");
+    assert.equal(flag.before, "soon");
+    assert.equal(flag.after, null);
+    assert.equal(flag.reason, "Not a recognisable date");
+    assert.equal(flag.decision, "approved");
+    assert.equal(changes.filter((c) => c.rowIndex === 4 && c.kind === "value").length, 0);
+    assert.equal(changes.filter((c) => c.kind === "flag").length, 1);
+  });
+
+  it("no non-date flags in a column that is under 80% dates", () => {
+    const changes = defaults(tbl(["signup_date"], [["2022-03-04"], ["soon"], ["later"]]));
+    assert.equal(changes.filter((c) => c.kind === "flag").length, 0);
+  });
+});
+
 describe("low-confidence policy", () => {
   it("'apply' approves a low-confidence result", () => {
     const rules = [rule("country_names", "country", {}, { onLowConfidence: "apply" })];

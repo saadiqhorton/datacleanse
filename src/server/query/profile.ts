@@ -186,7 +186,7 @@ async function bestJoinFor(
 }
 
 /**
- * 0 = same name. 1 = "<table>_id" against the "id" of that table (orders.id <-> line_items.order_id).
+ * 0 = same name. 1 = "<entity>_id" against the "id" of that table (orders.id <-> line_items.order_id).
  * 2 = one name is "<stem>_" plus the other (customer_email <-> email). "id" is only matched by
  * rule 0 or 1, so a stray "x_id" column does not pair with every "id" in the other table.
  */
@@ -194,8 +194,8 @@ function pairRank(left: string, right: string, leftAlias: string, rightAlias: st
   const a = left.toLowerCase();
   const b = right.toLowerCase();
   if (a === b) return 0;
-  if (b === "id" && a === `${singular(rightAlias)}_id`) return 1;
-  if (a === "id" && b === `${singular(leftAlias)}_id`) return 1;
+  if (b === "id" && entityNames(rightAlias).some((n) => a === `${n}_id`)) return 1;
+  if (a === "id" && entityNames(leftAlias).some((n) => b === `${n}_id`)) return 1;
   if (a === "id" || b === "id") return null;
   if (a.endsWith(`_${b}`) || b.endsWith(`_${a}`)) return 2;
   return null;
@@ -205,6 +205,15 @@ function singular(alias: string): string {
   if (alias.endsWith("ies")) return `${alias.slice(0, -3)}y`;
   if (alias.endsWith("s")) return alias.slice(0, -1);
   return alias;
+}
+
+/**
+ * Names a table may go by in a "<name>_id" column: its singular alias and each trailing part of it,
+ * so "orders" gives "order", and a file named "ca_orders.csv" (alias "ca_orders") gives "ca_order" and "order".
+ */
+function entityNames(alias: string): string[] {
+  const parts = singular(alias).split("_");
+  return parts.map((_, i) => parts.slice(i).join("_"));
 }
 
 async function matchRate(

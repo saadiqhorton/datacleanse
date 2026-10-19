@@ -396,7 +396,6 @@ function ChangeRow({ item, fileId, readOnly }: { item: ChangeRecord; fileId: str
             fileId={fileId}
             changeId={item.id}
             label={location}
-            source={item.source}
             decision={item.decision}
             readOnly={readOnly}
           />

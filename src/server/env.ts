@@ -1,4 +1,8 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
+
+let generatedSecret: string | null = null;
 
 /** Server configuration from environment variables. Read lazily so tests can override. */
 export const env = {
@@ -8,14 +12,18 @@ export const env = {
   get appUrl() {
     return (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
   },
-  /** Used to sign download links and encrypt user API keys. Required in production. */
+  /**
+   * Signs download links and encrypts secrets at rest. Uses APP_SECRET when set (≥ 32 chars); otherwise a
+   * random secret is generated once and kept in DATA_DIR/.app-secret (owner-only), so it survives restarts.
+   */
   get appSecret() {
     const s = process.env.APP_SECRET;
-    if (s && s.length >= 32) return s;
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("APP_SECRET must be set to at least 32 characters in production.");
+    if (s) {
+      if (s.length < 32) throw new Error("APP_SECRET must be at least 32 characters.");
+      return s;
     }
-    return "dev-only-secret-do-not-use-in-production-0123456789";
+    if (!generatedSecret) generatedSecret = loadOrCreateSecret(path.join(this.dataDir, ".app-secret"));
+    return generatedSecret;
   },
   get maxUploadBytes() {
     return Number(process.env.MAX_UPLOAD_MB || 200) * 1024 * 1024;
@@ -34,3 +42,21 @@ export const env = {
     return Math.max(1, Number(process.env.JOB_CONCURRENCY || 2));
   },
 };
+
+function loadOrCreateSecret(file: string) {
+  try {
+    const existing = fs.readFileSync(file, "utf8").trim();
+    if (existing.length >= 32) return existing;
+  } catch {
+    // not created yet
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const secret = crypto.randomBytes(48).toString("base64url");
+  try {
+    // "wx" fails if another process created it first; then read theirs.
+    fs.writeFileSync(file, secret + "\n", { mode: 0o600, flag: "wx" });
+    return secret;
+  } catch {
+    return fs.readFileSync(file, "utf8").trim();
+  }
+}

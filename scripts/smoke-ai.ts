@@ -226,12 +226,26 @@ const sampleTables: TableProfile[] = [
 // ---------------------------------------------------------------------------
 
 describe("readAIConfig", () => {
-  it("defaults to local Ollama when nothing is set", () => {
-    const config = readAIConfig(env({}));
+  it("is off when nothing is set", () => {
+    assert.equal(readAIConfig(env({})).provider, "off");
+  });
+
+  it("defaults to local Ollama settings when only AI_PROVIDER=local is set", () => {
+    const config = readAIConfig(env({ AI_PROVIDER: "local" }));
     assert.equal(config.provider, "local");
     assert.equal(config.baseURL, "http://localhost:11434/v1");
     assert.equal(config.model, "llama3.1");
     assert.equal(config.apiKey, undefined);
+  });
+
+  it("treats a bare AI_BASE_URL as a local model server", () => {
+    assert.equal(readAIConfig(env({ AI_BASE_URL: "http://localhost:1234/v1" })).provider, "local");
+  });
+
+  it("only calls private-network hosts local", () => {
+    const local = (baseURL: string) => isLocal({ provider: "local", model: "m", baseURL });
+    assert.equal(local("http://192.168.1.20:11434/v1"), true);
+    assert.equal(local("https://ollama.example.com/v1"), false);
   });
 
   it("defaults to anthropic when ANTHROPIC_API_KEY is set", () => {
