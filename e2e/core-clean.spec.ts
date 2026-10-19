@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { startServer, type AppServer } from "./support/server";
 
@@ -14,7 +15,10 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app.stop());
 test.afterEach(async ({}, testInfo) => {
-  if (testInfo.status !== testInfo.expectedStatus) fs.writeFileSync("/home/user/claude-0/scratch-pw/server.log", app.log());
+  if (testInfo.status !== testInfo.expectedStatus) {
+    // Failed runs keep the server output for debugging (dev emails, stack traces).
+    fs.writeFileSync(path.join(os.tmpdir(), "core-clean-server.log"), app.log());
+  }
 });
 
 /** The value under a stat card label, e.g. "Rows removed" -> "3". */
@@ -79,6 +83,12 @@ test("core cleaning journey with AI off", async ({ page }) => {
     // Duplicate merges: the fuzzy jane row and the exact Ana Silva row.
     await expect(rows.filter({ hasText: "Merge" }).filter({ hasText: "Jane Ortiz" }).first()).toBeVisible();
     await expect(rows.filter({ hasText: "Merge" }).filter({ hasText: "Ana Silva" }).first()).toBeVisible();
+    // Ambiguous day/month: 25/12/2021 can only be DD/MM, but the column is mostly MM/DD, so it waits for a decision.
+    const dayMonth = rows.filter({ hasText: "25/12/2021" }).filter({ hasText: "2021-12-25" }).first();
+    await expect(dayMonth).toContainText("Day/month order differs from the rest of the column");
+    await expect(dayMonth.getByRole("button", { name: /^Keep change / })).toBeVisible();
+    // Country typo: "Gemany" -> "Germany" is a suggestion that also waits for a decision.
+    await expect(rows.filter({ hasText: "Gemany" }).filter({ hasText: "Germany" }).first()).toContainText("Likely typo");
   });
 
   await test.step("filter pills change the list and the URL", async () => {
@@ -91,30 +101,29 @@ test("core cleaning journey with AI off", async ({ page }) => {
     await expect(page).toHaveURL(/filter=pending/);
 
     await proposed.getByRole("link", { name: /^All/ }).click();
-    await expect(page).toHaveURL(/filter=all|(?!.*filter=)/);
+    await expect(page).not.toHaveURL(/filter=/);
   });
 
   await test.step("skip a rule change, then restore it", async () => {
     const proposed = page.getByRole("region", { name: "Proposed changes" });
     const companyRow = proposed.getByRole("row").filter({ hasText: "Acme Corp" }).first();
     await companyRow.getByRole("button", { name: /^Undo change / }).click();
-    await expect(companyRow.getByText("Skipped", { exact: true })).toBeVisible();
-    if (process.env.TMP_SKIP_RESTORE !== "1") {
-      await companyRow.getByRole("button", { name: /^Restore change / }).click();
-      await expect(companyRow.getByText("Approved", { exact: true })).toBeVisible();
-    }
+    await expect(companyRow).toContainText("Skipped");
+    await expect(companyRow.getByRole("button", { name: /^Restore change / })).toBeVisible();
+    await companyRow.getByRole("button", { name: /^Restore change / }).click();
+    await expect(companyRow).toContainText("Approved");
+    await expect(companyRow.getByRole("button", { name: /^Undo change / })).toBeVisible();
   });
 
   await test.step("keep a pending change if there is one", async () => {
     const proposed = page.getByRole("region", { name: "Proposed changes" });
     const keep = proposed.getByRole("button", { name: /^Keep change / });
     const pendingCount = await keep.count();
-    if (pendingCount > 0) {
-      const label = (await keep.first().getAttribute("aria-label")) ?? "";
-      await keep.first().click();
-      await expect(proposed.getByRole("button", { name: label })).toHaveCount(0);
-      await expect(proposed.getByRole("button", { name: /^Keep change /})).toHaveCount(pendingCount - 1);
-    }
+    expect(pendingCount).toBeGreaterThan(0);
+    const label = (await keep.first().getAttribute("aria-label")) ?? "";
+    await keep.first().click();
+    await expect(proposed.getByRole("button", { name: label })).toHaveCount(0);
+    await expect(proposed.getByRole("button", { name: /^Keep change / })).toHaveCount(pendingCount - 1);
   });
 
   let removed = 0;
@@ -128,11 +137,13 @@ test("core cleaning journey with AI off", async ({ page }) => {
 
     removed = toNumber(await statValue(page, null, "Rows removed"));
     rowsOut = toNumber(await statValue(page, null, "Rows out"));
-    expect(removed).toBeGreaterThanOrEqual(1);
+    // The fixture has two duplicate pairs (Jane 1/2 by email, Ana 4/6 exact), so two rows are merged away.
+    expect(removed).toBe(2);
     expect(rowsOut).toBe(6 - removed);
     await expect(page.getByRole("heading", { name: "By column" })).toBeVisible();
     await expect(page.getByRole("table").getByRole("row").nth(1)).toBeVisible();
-    await expect(page.getByRole("list").filter({ has: page.locator("li") }).last()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+    await expect(page.getByRole("list").filter({ hasText: /Applied \d+ changes?/ })).toBeVisible();
   });
 
   await test.step("download the cleaned CSV and check its content", async () => {
@@ -144,8 +155,15 @@ test("core cleaning journey with AI off", async ({ page }) => {
     const lines = text.split(/\r?\n/).filter((line) => line.length > 0);
     expect(lines[0]).toBe(HEADER);
     expect(lines.length - 1).toBe(6 - removed);
-    expect(text).toContain("2022-03-04");
-    expect(text).toContain("Acme Corp");
+    const rowsById = new Map(lines.slice(1).map((line) => [line.split(",")[0], line.split(",")]));
+    // Merged away: customer 1 (into 2) and the second Ana Silva (4 duplicates 6).
+    expect(rowsById.has("1")).toBe(false);
+    expect(rowsById.has("4")).toBe(false);
+    // Applied rules: company trimmed and cased, dates normalized (the "4 Mar 2022" one is rule-based).
+    expect(rowsById.get("2")?.[6]).toBe("Acme Corp");
+    expect(rowsById.get("2")?.[4]).toBe("2022-03-04");
+    expect(rowsById.get("3")?.[4]).toBe("2022-03-04");
+    expect(rowsById.get("6")?.[4]).toBe("2021-12-25");
     expect(text.match(/ana@initech\.co/g)?.length ?? 0).toBe(1);
   });
 
@@ -158,8 +176,9 @@ test("core cleaning journey with AI off", async ({ page }) => {
       page.waitForEvent("download"),
       page.getByRole("link", { name: "Change log CSV" }).click(),
     ]);
-    const header = fs.readFileSync((await log.path())!, "utf8").split(/\r?\n/)[0];
-    expect(header.startsWith("row,column,change,before,after")).toBe(true);
+    // The change log is served with a UTF-8 BOM so Excel opens it as UTF-8; strip it before comparing.
+    const header = fs.readFileSync((await log.path())!, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)[0];
+    expect(header).toBe("row,column,change,before,after,source,rule,reason,confidence,decision,decided_by");
   });
 
   await test.step("the file is Ready on /files and listed on /report", async () => {
@@ -176,16 +195,27 @@ test("core cleaning journey with AI off", async ({ page }) => {
 
   await test.step("a non-UTF-8 upload fails with the UTF-8 message", async () => {
     await page.goto(`${app.url}/upload`);
+    await page.waitForLoadState("networkidle");
     await page.locator('input[type="file"]').setInputFiles(NOT_UTF8);
+    await expect(page.getByText("not_utf8.csv", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Start cleaning" }).click();
     await expect(page).toHaveURL(/\/processing\/[^/]+$/);
     await expect(page.getByText("We couldn't read this file", { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(/isn't valid UTF-8/)).toBeVisible();
+    // The original upload is still stored, so the failure offers a retry and an upload-again route.
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Upload again" })).toHaveAttribute("href", "/upload");
 
     await page.goto(`${app.url}/files`);
     const row = page.getByRole("row").filter({ hasText: "not_utf8.csv" });
     await expect(row.getByText("Failed", { exact: false })).toBeVisible();
     await expect(row.getByText(/isn't valid UTF-8/)).toBeVisible();
+
+    await row.getByRole("button", { name: "Try again not_utf8.csv" }).click();
+    await expect(page).toHaveURL(/\/processing\/[^/]+$/);
+    await expect(page.getByText("We couldn't read this file", { exact: true })).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("link", { name: "Upload again" }).click();
+    await expect(page).toHaveURL(/\/upload$/);
   });
 
   await test.step("delete the cleaned file; the report stays", async () => {

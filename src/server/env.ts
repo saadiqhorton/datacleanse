@@ -7,7 +7,7 @@ let generatedSecret: string | null = null;
 /** Server configuration from environment variables. Read lazily so tests can override. */
 export const env = {
   get dataDir() {
-    return path.resolve(process.env.DATA_DIR || path.join(process.cwd(), ".data"));
+    return path.resolve(process.env.DATA_DIR || path.join(/* turbopackIgnore: true */ process.cwd(), ".data"));
   },
   get appUrl() {
     return (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");

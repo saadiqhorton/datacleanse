@@ -142,7 +142,24 @@ async function PrivacySection() {
         <PrivacySelect
           name="defaultMode"
           title="Default cleaning mode"
-          description="AI only sees column names, statistics and a 20-row sample."
+          description={
+            <>
+              Cleaning suggestions see column names, statistics and a 20-row sample.
+              <details className="mt-2">
+                <summary className="cursor-pointer text-ink underline">What the AI sees</summary>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  <li>
+                    Cleaning suggestions: column names, statistics and a 20-row sample.
+                  </li>
+                  <li>
+                    Ask: column names, types, summary statistics and up to 10 common values per column to write the
+                    query, plus up to 50 result rows to phrase the answer.
+                  </li>
+                  <li>Rule drafting: your sentence, the headers and common values from your newest file.</li>
+                </ul>
+              </details>
+            </>
+          }
           defaultValue={settings.defaultMode}
           options={CLEANING_MODES.map((m) => ({ value: m, label: CLEANING_MODE_LABELS[m] }))}
           ariaLabel="Default cleaning mode"

@@ -2,32 +2,44 @@ import fs from "node:fs";
 import * as OTPAuth from "otpauth";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { startServer, type AppServer } from "./support/server";
+import { decodeQuotedPrintable, startMailCapture, type MailCapture } from "./support/mail-capture";
 
 const ADMIN = { name: "Ada Admin", email: "ada@northwind.co", password: "correct-horse-battery" };
 const ADMIN_NEW_PASSWORD = "new-horse-battery-staple";
 const MEMBER = { name: "Sam Member", email: "sam@northwind.co", password: "member-horse-battery" };
 
 let app: AppServer;
+let mail: MailCapture;
 test.beforeAll(async () => {
-  // Outside production the server writes outgoing mail to its log (no SMTP_URL is set in this harness).
-  app = await startServer({ NODE_ENV: "development" });
+  // The app sends real SMTP here; the production build cannot fall back to logging mail, so capture it locally.
+  mail = await startMailCapture();
+  app = await startServer({ SMTP_URL: mail.url });
 });
-test.afterAll(async () => app.stop());
+test.afterAll(async () => {
+  await app.stop();
+  await mail.stop();
+});
 
-/** Latest link of one kind ("auth/magic" or "reset-password") mailed to an address, read from app.log(). */
+/** Latest link of one kind ("auth/magic" or "reset-password") mailed to an address. */
 function emailedLink(kind: "auth/magic" | "reset-password", email: string): string | null {
-  const blocks = app.log().split("[email] ");
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (!blocks[i].startsWith(`to=${email} `)) continue;
-    const match = blocks[i].match(new RegExp(`${app.url}/${kind}\\?token=[A-Za-z0-9_-]+`));
+  const messages = mail.messages().filter((m) => m.to === email);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const match = decodeQuotedPrintable(messages[i].data).match(new RegExp(`${app.url}/${kind}\\?token=[A-Za-z0-9_-]+`));
     if (match) return match[0];
   }
   return null;
 }
 
+/** Navigates and waits for the page to hydrate, so clicks and typing are not lost to the streamed swap. */
+async function open(page: Page, url: string) {
+  const response = await page.goto(url);
+  await page.waitForLoadState("networkidle");
+  return response;
+}
+
 /** Waits for the streamed form to replace the Suspense fallback form (both are briefly in the DOM). */
 async function gotoForm(page: Page, url: string, field: string) {
-  await page.goto(url);
+  await open(page, url);
   await expect(page.getByRole("textbox", { name: field })).toHaveCount(1);
 }
 
@@ -39,10 +51,14 @@ async function signOutViaMenu(page: Page) {
   await openAccountMenu(page);
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/signin$/);
+  // Reload the sign-in page: client-side navigation to it can re-stream the form and drop typed input.
+  await open(page, `${app.url}/signin`);
   await expect(page.getByRole("textbox", { name: "Work email" })).toHaveCount(1);
 }
 
 async function signInWithPassword(page: Page, email: string, password: string) {
+  // Submitting before the form hydrates races the progressive-enhancement POST, so let the page settle first.
+  await page.waitForLoadState("networkidle");
   await page.getByRole("textbox", { name: "Work email" }).fill(email);
   await page.getByLabel(/^Password/).filter({ visible: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -75,7 +91,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   };
 
   await test.step("signed out: /files goes to sign-in; first sign-up becomes admin", async () => {
-    await page.goto(`${app.url}/files`);
+    await open(page, `${app.url}/files`);
     await expect(page).toHaveURL(/\/signin\?next=%2Ffiles$/);
 
     await gotoForm(page, `${app.url}/signup`, "Your name");
@@ -96,7 +112,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
 
   await test.step("wrong password shows inline error; correct password returns to ?next", async () => {
     await signOutViaMenu(page);
-    await page.goto(`${app.url}/settings`);
+    await open(page, `${app.url}/settings`);
     await expect(page).toHaveURL(/\/signin\?next=%2Fsettings$/);
     await expect(page.getByRole("textbox", { name: "Work email" })).toHaveCount(1);
 
@@ -118,7 +134,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await expect.poll(() => emailedLink("auth/magic", ADMIN.email)).not.toBeNull();
     const link = emailedLink("auth/magic", ADMIN.email)!;
 
-    await page.goto(link);
+    await open(page, link);
     await expect(page.getByRole("heading", { name: `Sign in to DataCleanse as ${ADMIN.email}?` })).toBeVisible();
     expect(await hasSessionCookie(page.context())).toBe(false);
 
@@ -127,7 +143,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await expect(page.getByRole("heading", { name: /your files/i })).toBeVisible();
 
     await signOutViaMenu(page);
-    await page.goto(link);
+    await open(page, link);
     await expect(page).toHaveURL(/\/signin\?error=link_expired$/);
     await expect(page.getByText("That sign-in link has expired or was already used.")).toBeVisible();
   });
@@ -140,7 +156,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
 
     // The reset email is sent without being awaited, so poll the log for it.
     await expect.poll(() => emailedLink("reset-password", ADMIN.email)).not.toBeNull();
-    await page.goto(emailedLink("reset-password", ADMIN.email)!);
+    await open(page, emailedLink("reset-password", ADMIN.email)!);
     await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
     await page.getByLabel("New password").filter({ visible: true }).fill(ADMIN_NEW_PASSWORD);
     await page.getByRole("button", { name: "Set new password" }).click();
@@ -164,7 +180,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await signInWithPassword(otherPage, ADMIN.email, ADMIN_NEW_PASSWORD);
     await expect(otherPage).toHaveURL(/\/files$/);
 
-    await page.goto(`${app.url}/settings`);
+    await open(page, `${app.url}/settings`);
     const devices = page.getByRole("list", { name: "Signed-in devices" });
     await expect(devices.getByRole("listitem")).toHaveCount(2);
     await expect(devices.getByText("This browser")).toBeVisible();
@@ -172,15 +188,15 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await page.getByRole("button", { name: "Sign out others" }).click();
     await expect(devices.getByRole("listitem")).toHaveCount(1);
 
-    await otherPage.goto(`${app.url}/files`);
+    await open(otherPage, `${app.url}/files`);
     await expect(otherPage).toHaveURL(/\/signin\?next=%2Ffiles$/);
   });
 
   let secret = "";
   await test.step("security: turn on 2FA with a TOTP code, then sign-in asks for a code", async () => {
-    await page.goto(`${app.url}/settings#security`);
+    await open(page, `${app.url}/settings#security`);
     await page.getByRole("button", { name: "Turn on" }).click();
-    await expect(page.getByRole("heading", { name: "Add DataCleanse to your authenticator app" })).toBeVisible();
+    await expect(page.getByText("Add DataCleanse to your authenticator app", { exact: true })).toBeVisible();
 
     secret = (await page.getByText(/^[A-Z2-7]{32}$/).textContent())!.trim();
     await page.getByRole("textbox", { name: /^Code from your app/ }).fill(totpFor(secret).generate());
@@ -217,7 +233,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   });
 
   await test.step("profile name shows in the account menu; privacy settings persist; export has no secrets", async () => {
-    await page.goto(`${app.url}/settings`);
+    await open(page, `${app.url}/settings`);
     await page.getByRole("textbox", { name: "Name", exact: true }).fill("Ada Lovelace");
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Profile saved.")).toBeVisible();
@@ -246,16 +262,16 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   });
 
   await test.step("admin overview renders its stat cards", async () => {
-    await page.goto(`${app.url}/admin`);
+    await open(page, `${app.url}/admin`);
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-    const stats = page.getByRole("section", { name: "Last 24 hours" });
+    const stats = page.getByRole("region", { name: "Last 24 hours" });
     for (const label of ["Jobs today", "Failed", "Queue depth", "AI calls today"]) {
       await expect(stats.getByText(label, { exact: true })).toBeVisible();
     }
   });
 
   await test.step("admin users: invite, promote, demote, disable, enable; cannot disable self", async () => {
-    await page.goto(`${app.url}/admin/users`);
+    await open(page, `${app.url}/admin/users`);
     await page.getByRole("textbox", { name: "Email", exact: true }).fill(MEMBER.email);
     await page.getByRole("textbox", { name: /^Name/ }).fill(MEMBER.name);
     await page.getByRole("button", { name: "Send invite" }).click();
@@ -287,14 +303,14 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   });
 
   await test.step("audit log: auth and admin entries, search works", async () => {
-    await page.goto(`${app.url}/admin/audit`);
-    await page.getByRole("textbox", { name: "Action starts with" }).fill("auth.");
+    await open(page, `${app.url}/admin/audit`);
+    await page.getByRole("combobox", { name: "Action starts with" }).fill("auth.");
     await page.getByRole("button", { name: "Search", exact: true }).click();
     const entries = page.getByRole("table", { name: "Audit log entries" });
     await expect(entries.getByText("auth.signed_in", { exact: true }).first()).toBeVisible();
     await expect(entries.getByText("auth.magic_link_requested", { exact: true }).first()).toBeVisible();
 
-    await page.getByRole("textbox", { name: "Action starts with" }).fill("");
+    await page.getByRole("combobox", { name: "Action starts with" }).fill("");
     await page.getByRole("searchbox", { name: /Search/ }).fill(MEMBER.email);
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await expect(entries.getByText("admin.user_invited", { exact: true })).toBeVisible();
@@ -303,7 +319,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   });
 
   await test.step("admin configuration: local model test reports failure; set Off", async () => {
-    await page.goto(`${app.url}/admin/config`);
+    await open(page, `${app.url}/admin/config`);
     await page.getByRole("combobox", { name: "Provider" }).selectOption("local");
     await page.getByRole("textbox", { name: /^Base URL/ }).fill("http://127.0.0.1:9/v1");
     await page.getByRole("button", { name: "Save AI settings" }).click();
@@ -324,7 +340,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     const memberContext = await newContext();
     const memberPage = await memberContext.newPage();
     // The invite email holds the single-use sign-in link for the new account.
-    await memberPage.goto(emailedLink("auth/magic", MEMBER.email)!);
+    await open(memberPage, emailedLink("auth/magic", MEMBER.email)!);
     await memberPage.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(memberPage).toHaveURL(/\/files$/);
 
@@ -332,13 +348,13 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await expect(memberPage.getByRole("menuitem", { name: "Admin console" })).toHaveCount(0);
     await memberPage.keyboard.press("Escape");
 
-    const response = await memberPage.goto(`${app.url}/admin`);
+    const response = await open(memberPage, `${app.url}/admin`);
     expect(response?.status()).toBe(404);
     await expect(memberPage.getByRole("heading", { name: "Overview" })).toHaveCount(0);
   });
 
   await test.step("rules: seeded CRM exports set; toggle, add by hand, new/rename/delete set; AI-off message", async () => {
-    await page.goto(`${app.url}/rules`);
+    await open(page, `${app.url}/rules`);
     await expect(page.getByRole("heading", { name: "CRM exports", exact: true })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Enable phone rule" })).toBeChecked();
 
@@ -356,7 +372,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
     await expect(page.getByRole("region", { name: "Rules in this set" }).getByText("country", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "+ New rule set" }).click();
-    await page.getByRole("textbox", { name: "Name" }).fill("Payroll");
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill("Payroll");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Payroll", exact: true })).toBeVisible();
 
@@ -380,7 +396,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   await test.step("delete the member account: type email to confirm; signing in again fails", async () => {
     const memberContext = contexts[contexts.length - 1];
     const memberPage = memberContext.pages()[0];
-    await memberPage.goto(`${app.url}/settings`);
+    await open(memberPage, `${app.url}/settings`);
     await memberPage.getByRole("button", { name: "Delete everything" }).click();
     const confirm = memberPage.getByRole("textbox", { name: /to confirm/ });
     await confirm.fill(MEMBER.email);
@@ -393,7 +409,7 @@ test("accounts, security, settings, admin and rules journey", async ({ page, bro
   });
 
   await test.step("deleting the last admin is refused", async () => {
-    await page.goto(`${app.url}/settings`);
+    await open(page, `${app.url}/settings`);
     await page.getByRole("button", { name: "Delete everything" }).click();
     await page.getByRole("textbox", { name: /to confirm/ }).fill(ADMIN.email);
     await page.getByRole("button", { name: "Delete account and data" }).click();

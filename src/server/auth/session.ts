@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
 import { sha256 } from "../ids";
 import { lookupSession, markTwoFactorPassed, createSessionRecord, revokeAllSessions, revokeSession, SESSION_TTL_MS, type SessionRecord } from "./sessions";
 import { getUserById, type UserRecord } from "./users";
@@ -33,6 +34,9 @@ type Resolved =
 async function resolve(): Promise<Resolved> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return { status: "signed_out" };
+  // Session lookup reads the clock and the database, so it must run at request time, never in a
+  // prefetch prerender (where cookies are known but Date.now() is not allowed).
+  await connection();
   const session = lookupSession(token);
   if (!session) return { status: "signed_out" };
   const user = getUserById(session.userId);

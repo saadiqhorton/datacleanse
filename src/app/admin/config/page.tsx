@@ -44,7 +44,6 @@ async function AIConfiguration() {
   await requireAdmin();
   const view = getAIAdminView();
 
-  // Remount the form when the saved values change, so it shows what was stored.
   const initial: AIConfigInitial | null = view.effective
     ? {
         provider: view.effective.provider,
@@ -75,7 +74,7 @@ async function AIConfiguration() {
         </h2>
         <Card className="p-6">
           {initial ? (
-            <AIConfigForm key={JSON.stringify(initial)} initial={initial} />
+            <AIConfigForm initial={initial} />
           ) : (
             <p role="alert" className="text-sm text-error">
               The AI settings could not be read, so they cannot be edited here. Check AI_PROVIDER in .env.local.

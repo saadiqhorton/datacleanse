@@ -20,6 +20,8 @@ export async function startServer(env: Record<string, string> = {}): Promise<App
     cwd: path.resolve(__dirname, "../.."),
     env: { ...process.env, NODE_ENV: "production", DATA_DIR: dataDir, APP_URL: `http://localhost:${port}`, AI_PROVIDER: "off", ...env },
     stdio: ["ignore", "pipe", "pipe"],
+    // Own process group, so stop() can kill npx *and* the Next server it spawns.
+    detached: true,
   });
   child.stdout!.on("data", (d) => (output += d));
   child.stderr!.on("data", (d) => (output += d));
@@ -39,7 +41,11 @@ export async function startServer(env: Record<string, string> = {}): Promise<App
     dataDir,
     log: () => output,
     stop: async () => {
-      child.kill("SIGTERM");
+      try {
+        process.kill(-child.pid!, "SIGTERM");
+      } catch {
+        // already exited
+      }
       await new Promise((r) => setTimeout(r, 300));
       fs.rmSync(dataDir, { recursive: true, force: true });
     },

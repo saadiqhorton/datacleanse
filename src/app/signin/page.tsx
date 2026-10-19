@@ -38,7 +38,8 @@ export default function SignInPage({ searchParams }: { searchParams: Promise<Par
       }
     >
       {/* Reads searchParams, so it sits behind a boundary (cacheComponents). */}
-      <Suspense fallback={<SignInForm />}>
+      {/* The fallback is inert: an interactive copy would lose whatever was typed when the real form streams in. */}
+      <Suspense fallback={<div aria-hidden="true" className="pointer-events-none select-none opacity-60" inert><SignInForm /></div>}>
         <SignInFormFromParams searchParams={searchParams} />
       </Suspense>
     </AuthShell>

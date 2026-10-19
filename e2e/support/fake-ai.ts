@@ -9,6 +9,7 @@ import type { AddressInfo } from "node:net";
 export interface FakeAI {
   baseURL: string;
   /** Requests received, newest last (parsed JSON bodies). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- arbitrary JSON request bodies
   requests: { path: string; body: any; headers: http.IncomingHttpHeaders }[];
   /** Reply by response_format.json_schema.name (e.g. "fix_suggestions", "query_plan", "answer_summary"). */
   reply(schemaName: string, json: unknown): void;

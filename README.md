@@ -105,7 +105,7 @@ Before you go live:
 
 - **`APP_SECRET`**: set to a random value of at least 32 characters. It signs download links (valid for 15 minutes) and encrypts saved API keys and 2FA secrets. Changing it later makes those saved secrets unreadable.
 - **`APP_URL`**: set to the public address, so links in emails point to the right place.
-- **`SMTP_URL`**: required in production. Without it, magic-link sign-in fails and password-reset emails are not sent. The server log records the failure.
+- **`SMTP_URL`**: needed in production for magic-link sign-in, invites and password resets. Without it those emails are refused (the server log records the failure). Set `MAIL_LOG=1` to print them to the server log instead, but only if everyone who can read the log may sign in as any user.
 - **HTTPS**: session cookies are `Secure` in production, so browsers send them only over HTTPS (localhost is the usual exception). Put the app behind a TLS reverse proxy. Raise the proxy's request-body limit to match `MAX_UPLOAD_MB` (default 200).
 - **`CLAMD_ADDRESS`**: optional, but recommended for uploads from outside your organization. When set, every upload is scanned by clamd, and an upload is rejected if clamd cannot be reached.
 - **One instance only.** The database is SQLite and the job runner runs inside the Node process. Run a single process per `DATA_DIR`. `JOB_CONCURRENCY` (default 2) sets how many cleaning jobs run at once within it.

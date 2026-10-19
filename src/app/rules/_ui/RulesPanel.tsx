@@ -11,14 +11,24 @@ import { RuleEditor } from "./RuleEditor";
 export function RulesPanel({ setId, rules }: { setId: string; rules: RuleView[] }) {
   const [editing, setEditing] = useState<RuleView | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
+  // Checkbox values shown before the action's refresh arrives, so a toggle does not snap back and forth.
+  const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
 
-  function run(build: () => FormData, action: (fd: FormData) => Promise<{ ok: true; message?: string } | { ok: false; error: string }>) {
+  function run(
+    build: () => FormData,
+    action: (fd: FormData) => Promise<{ ok: true; message?: string } | { ok: false; error: string }>,
+    optimisticEnabled?: { id: string; enabled: boolean },
+  ) {
     const formData = build();
+    // Set synchronously in the event handler: a controlled checkbox reverts if its state changes only in a transition.
+    if (optimisticEnabled) setOptimistic((o) => ({ ...o, [optimisticEnabled.id]: optimisticEnabled.enabled }));
     startTransition(async () => {
       const result = await action(formData);
+      // The action refreshed the page, so the server value is current again.
+      setOptimistic({});
       if (!result.ok) setNotice({ tone: "error", text: result.error });
-      else setNotice(null);
+      else setNotice(result.message ? { tone: "ok", text: result.message } : null);
     });
   }
 
@@ -104,14 +114,17 @@ export function RulesPanel({ setId, rules }: { setId: string; rules: RuleView[] 
               <label className="flex min-h-9 items-center gap-1.5 text-[13px] md:min-h-0">
                 <input
                   type="checkbox"
-                  checked={rule.enabled}
+                  checked={optimistic[rule.id] ?? rule.enabled}
                   disabled={pending}
                   aria-label={`Enable ${rule.columnPattern} rule`}
                   onChange={(e) =>
-                    run(ruleForm(rule, { enabled: String(e.target.checked) }), toggleRuleAction)
+                    run(ruleForm(rule, { enabled: String(e.target.checked) }), toggleRuleAction, {
+                      id: rule.id,
+                      enabled: e.target.checked,
+                    })
                   }
                 />
-                {rule.enabled ? "On" : "Off"}
+                {(optimistic[rule.id] ?? rule.enabled) ? "On" : "Off"}
               </label>
             </div>
           );

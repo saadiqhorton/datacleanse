@@ -91,6 +91,13 @@ export function TwoFactorSetup({ enabled }: { enabled: boolean }) {
         </div>
       )}
 
+      {/* Success notices live here: the panels that submit them unmount once the status flips. */}
+      {(confirmState?.ok ?? disableState?.ok) && (
+        <div className="border-b border-divider px-4 py-4 sm:px-6">
+          <FormMessage ok={confirmState?.ok ?? disableState?.ok} />
+        </div>
+      )}
+
       {showEnroll && enrollment && (
         <div className="flex flex-col gap-5 border-b border-divider px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-1">

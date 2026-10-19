@@ -62,7 +62,8 @@ export async function ChatView({ params }: { params: Promise<{ chatId: string }>
         <InfoPanel className="flex flex-col gap-2 p-4 text-[13px] leading-normal text-slate">
           <div className="font-semibold text-ink">How answers work</div>
           AI writes a read-only query. We run it on every row of your files, so the numbers come
-          from the query, not the AI. AI only sees column names, types and summary statistics.
+          from the query, not the AI. To write the query, AI sees column names, types, summary statistics and up
+          to 10 common values per column; to phrase the answer, it sees up to 50 result rows.
         </InfoPanel>
       </aside>
 

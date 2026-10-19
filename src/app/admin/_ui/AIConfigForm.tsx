@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Button, CheckboxField, SelectField, StatusBadge, TextField } from "@/components/ui";
 import { DEFAULT_BASE_URLS, DEFAULT_MODELS } from "@/lib/ai/config";
 import {
@@ -37,8 +37,26 @@ export function AIConfigForm({ initial }: { initial: AIConfigInitial }) {
   const [provider, setProvider] = useState<Provider>(initial.provider);
   const [model, setModel] = useState(initial.model);
   const [baseURL, setBaseURL] = useState(initial.baseURL);
+  const [synced, setSynced] = useState(initial);
   const [state, action, pending] = useActionState<ActionState, FormData>(saveAIConfigAction, null);
   const [test, testAction, testing] = useActionState<ConnectionTestState, FormData>(testAIConnectionAction, null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // A save refreshes the page with the stored values. Adopt them here rather than remounting the form,
+  // which would discard the "Saved." message that the save action returned.
+  if (initial !== synced) {
+    setSynced(initial);
+    setProvider(initial.provider);
+    setModel(initial.model);
+    setBaseURL(initial.baseURL);
+  }
+
+  // The typed key is stored encrypted and never shown again, so clear the field once it is saved.
+  useEffect(() => {
+    if (!state?.message) return;
+    const keyField = formRef.current?.elements.namedItem("apiKey");
+    if (keyField instanceof HTMLInputElement) keyField.value = "";
+  }, [state]);
 
   // Switching provider swaps in that provider's default model and endpoint, unless the admin typed their own.
   function chooseProvider(next: Provider) {
@@ -56,7 +74,7 @@ export function AIConfigForm({ initial }: { initial: AIConfigInitial }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <form action={action} className="flex flex-col gap-5">
+      <form ref={formRef} action={action} className="flex flex-col gap-5">
         <SelectField
           label="Provider"
           name="provider"

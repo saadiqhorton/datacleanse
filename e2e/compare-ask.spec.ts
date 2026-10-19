@@ -54,6 +54,7 @@ test("compare two customer exports, then ask questions about them", async ({ pag
   });
 
   let compareUrl = "";
+  let joinChatUrl = "";
   await test.step("compare sept vs oct", async () => {
     await page.goto(`${app.url}/compare`);
     await pickFile(page, "First file", "ca_customers_sept.csv");
@@ -64,9 +65,10 @@ test("compare two customer exports, then ask questions about them", async ({ pag
     compareUrl = page.url();
 
     const summary = page.getByRole("region", { name: "Summary" });
-    await expect(summary.getByText("+ 2")).toBeVisible();
-    await expect(summary.getByText("− 1")).toBeVisible();
-    await expect(summary.getByText("3", { exact: true })).toBeVisible();
+    await expect(summary.getByText("Added rows").locator("..")).toHaveText(/^Added rows\+ 2$/);
+    await expect(summary.getByText("Removed rows").locator("..")).toHaveText(/^Removed rows− 1$/);
+    await expect(summary.getByText("Changed rows").locator("..")).toHaveText(/^Changed rows3$/);
+    await expect(summary.getByText("Unchanged").locator("..")).toHaveText(/^Unchanged6$/);
     await expect(page.getByText(/unique in both files/)).toBeVisible();
     await expect(page.getByText("email", { exact: true }).first()).toBeVisible();
 
@@ -89,10 +91,15 @@ test("compare two customer exports, then ask questions about them", async ({ pag
     await page.getByRole("link", { name: "Export diff" }).click();
     const file = await download;
     const body = fs.readFileSync((await file.path()) as string, "utf8");
-    expect(body).toMatch(/change_type/);
-    expect(body).toMatch(/added/);
-    expect(body).toMatch(/removed/);
-    expect(body).toMatch(/changed/);
+    // One row per changed cell, so count distinct keys per change type. Fixture values have no commas.
+    // The file starts with a UTF-8 BOM so Excel reads accents; strip it before parsing.
+    const rows = body.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+    expect(rows[0]).toBe("change_type,key,column,before,after");
+    const keysOf = (kind: string) => new Set(rows.slice(1).filter((r) => r.split(",")[0] === kind).map((r) => r.split(",")[1]));
+    expect([...keysOf("added")].sort()).toEqual(["kim@acme.io", "lou@acme.io"]);
+    expect([...keysOf("removed")]).toEqual(["hal@acme.io"]);
+    expect([...keysOf("changed")].sort()).toEqual(["ann@acme.io", "cara@acme.io", "gia@acme.io"]);
+    expect(rows.some((r) => r.startsWith("type_changed,") && r.includes(",zip,"))).toBe(true);
   });
 
   await test.step("ask about these opens a chat with both files", async () => {
@@ -124,7 +131,9 @@ test("compare two customer exports, then ask questions about them", async ({ pag
     const download = page.waitForEvent("download");
     await page.getByRole("link", { name: "Download result CSV" }).click();
     const body = fs.readFileSync((await (await download).path()) as string, "utf8");
-    expect(body).toMatch(/plan/);
+    const lines = body.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+    expect(lines[0]).toMatch(/plan/);
+    expect(lines.length).toBe(4); // header + team, starter, enterprise
     expect(body).toMatch(/team/);
   });
 
@@ -147,6 +156,7 @@ test("compare two customer exports, then ask questions about them", async ({ pag
     await page.getByRole("checkbox", { name: /ca_customers_oct\.csv/ }).check();
     await page.getByRole("button", { name: /create|start|open/i }).last().click();
     await expect(page).toHaveURL(/\/ask\/[^/]+$/);
+    joinChatUrl = page.url();
 
     fake.reply("query_plan", {
       sql: "SELECT o.id, o.amount, r.amount AS refund FROM ca_orders o JOIN ca_refunds r ON o.id = r.order_id",
@@ -157,8 +167,7 @@ test("compare two customer exports, then ask questions about them", async ({ pag
     await page.getByRole("button", { name: "Ask", exact: true }).click();
 
     await expect(page.getByText("Confirm how these files connect")).toBeVisible({ timeout: 30_000 });
-    console.log("JOINCARD:", await page.getByText("Confirm how these files connect").locator("..").innerText());
-    await expect(page.getByText(/% of ca_/)).toBeVisible();
+    await expect(page.getByText("I'll join ca_refunds.order_id → ca_orders.id (75% of ca_refunds match).")).toBeVisible();
     await page.getByRole("button", { name: "Use these joins" }).click();
 
     await expect(page.getByText("Three orders have a refund.")).toBeVisible({ timeout: 30_000 });
@@ -166,16 +175,19 @@ test("compare two customer exports, then ask questions about them", async ({ pag
   });
 
   await test.step("AI off: asking shows guidance", async () => {
-    await page.goto(`${app.url}/settings`);
-    await page.getByLabel("AI mode").selectOption("off");
-    await page.getByRole("button", { name: /save/i }).first().click();
-    await expect(page.getByText(/saved/i).first()).toBeVisible({ timeout: 15_000 });
+    await page.goto(`${app.url}/settings#ai-provider`);
+    const aiSection = page.locator("#ai-provider");
+    await aiSection.getByLabel("AI mode").selectOption("off");
+    await aiSection.getByRole("button", { name: "Save AI settings" }).click();
+    await expect(aiSection.getByText("AI settings saved.")).toBeVisible({ timeout: 15_000 });
 
-    await page.goto(`${app.url}/ask`);
-    const chatLink = page.getByRole("link", { name: /ca_orders|chat/i }).first();
-    await chatLink.click();
+    await page.goto(joinChatUrl);
     await page.getByRole("textbox", { name: "Ask a question about your files" }).fill("How many customers?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
     await expect(page.getByText("AI is off. Turn it on in Settings to ask questions.")).toBeVisible({ timeout: 30_000 });
+  });
+
+  await test.step("no unexpected server errors were logged", () => {
+    expect(app.log()).not.toMatch(/\[(ask|compare)\] unexpected error/);
   });
 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isSignedInNonAdmin } from "./server/auth/admin-gate";
 
 /** Must match SESSION_COOKIE in src/server/auth/session.ts (kept separate: proxy stays dependency-free). */
 const SESSION_COOKIE = "dc_session";
@@ -8,6 +9,13 @@ const PATH_HEADER = "x-dc-pathname";
 
 const PUBLIC_EXACT = new Set(["/signin", "/signup", "/api/health", "/favicon.ico"]);
 const PUBLIC_PREFIXES = ["/signin/", "/auth/", "/reset-password", "/_next/"];
+
+/** A path that does not exist, so Next serves its 404 page with a 404 status. */
+const NOT_FOUND_PATH = "/_not-found-proxy";
+
+function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;
@@ -25,7 +33,14 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(PATH_HEADER, `${pathname}${search}`);
 
-  if (isPublic(pathname) || request.cookies.has(SESSION_COOKIE)) {
+  // Admin pages answer non-admins with a real 404 status. The page-level check can only show a not-found
+  // page with a 200, because the page has already started streaming by then.
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (token && isAdminPath(pathname) && isSignedInNonAdmin(token)) {
+    return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url));
+  }
+
+  if (isPublic(pathname) || token) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 

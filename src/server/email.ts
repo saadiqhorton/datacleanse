@@ -24,7 +24,7 @@ function getTransporter(url: string): Transporter {
 /**
  * Sends mail through SMTP_URL. Without SMTP_URL, outside production, the message is written to the
  * server log instead, so dev sign-in links can be copied from the console. In production without
- * SMTP_URL, sending fails: live sign-in links must never end up in logs.
+ * SMTP_URL, sending fails (live sign-in links shouldn't end up in logs) unless MAIL_LOG=1 opts in.
  */
 export async function sendEmail(msg: EmailMessage): Promise<void> {
   if (env.smtpUrl) {
@@ -35,8 +35,10 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
       text: msg.text,
     });
   } else {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SMTP_URL is not set; cannot send email in production.");
+    // Read via a computed key so the bundler doesn't inline NODE_ENV and drop the opt-in check.
+    const runtimeEnv = process.env;
+    if (runtimeEnv["NODE_ENV"] === "production" && runtimeEnv["MAIL_LOG"] !== "1") {
+      throw new Error("SMTP_URL is not set; cannot send email in production (set MAIL_LOG=1 to print emails to the log).");
     }
     console.log(`[email] to=${msg.to} subject=${msg.subject}\n${msg.text}`);
   }
